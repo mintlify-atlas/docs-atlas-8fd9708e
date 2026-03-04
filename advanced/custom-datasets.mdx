@@ -1,0 +1,658 @@
+---
+title: Custom Datasets
+description: Creating custom parquet datasets and integrating them with Omnilingual ASR training
+---
+
+## Overview
+
+Omnilingual ASR uses the `mixture_parquet_asr_dataset` format for training and evaluation. This guide shows how to create custom datasets, define asset cards, and integrate them into training workflows.
+
+## Dataset Architecture
+
+### Mixture Parquet Format
+
+The mixture parquet dataset organizes audio data with language and corpus partitioning:
+
+```
+dataset/
+├── version=0/
+│   ├── language=eng_Latn/
+│   │   ├── corpus=librispeech/
+│   │   │   ├── split=train/
+│   │   │   │   ├── part-0.parquet
+│   │   │   │   ├── part-1.parquet
+│   │   │   ├── split=dev/
+│   │   │   │   ├── part-0.parquet
+│   │   ├── corpus=common_voice/
+│   │   │   ├── split=train/
+│   ├── language=spa_Latn/
+│   │   ├── corpus=common_voice/
+│   ├── language_distribution_0.tsv
+```
+
+### Required Schema
+
+Each parquet file must contain these columns (defined in `/src/omnilingual_asr/datasets/storage/mixture_parquet_storage.py:42-51`):
+
+```python
+audio_bytes    # Binary audio data
+audio_size     # Length in samples (int)
+text           # Transcription (string)
+split          # "train", "dev", "test"
+language       # Language ID (e.g., "eng_Latn")
+corpus         # Corpus name (e.g., "librispeech")
+```
+
+## Creating a Custom Dataset
+
+### Step 1: Prepare Your Data
+
+Organize audio files and transcriptions:
+
+```python
+import pandas as pd
+import soundfile as sf
+import io
+
+# Example data structure
+data = [
+    {
+        "audio_path": "path/to/audio1.wav",
+        "text": "Hello world",
+        "split": "train",
+        "language": "eng_Latn",
+        "corpus": "my_corpus"
+    },
+    # ... more examples
+]
+```
+
+### Step 2: Convert to Parquet
+
+Create parquet files with the required schema:
+
+```python
+import pyarrow as pa
+import pyarrow.parquet as pq
+from pathlib import Path
+
+def audio_to_bytes(audio_path: str) -> bytes:
+    """Load audio file and convert to bytes."""
+    audio, sr = sf.read(audio_path)
+    
+    # Resample to 16kHz if needed
+    if sr != 16000:
+        import librosa
+        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+    
+    # Convert to mono if stereo
+    if len(audio.shape) > 1:
+        audio = audio.mean(axis=1)
+    
+    # Write to bytes buffer
+    buffer = io.BytesIO()
+    sf.write(buffer, audio, 16000, format='WAV')
+    return buffer.getvalue()
+
+def create_parquet_dataset(data, output_dir: Path):
+    """Create parquet dataset from audio files."""
+    
+    # Group by partition keys
+    df = pd.DataFrame(data)
+    
+    for (lang, corpus, split), group in df.groupby(
+        ['language', 'corpus', 'split']
+    ):
+        # Process audio files
+        records = []
+        for _, row in group.iterrows():
+            audio_bytes = audio_to_bytes(row['audio_path'])
+            
+            # Get audio length
+            audio, sr = sf.read(io.BytesIO(audio_bytes))
+            audio_size = len(audio)
+            
+            records.append({
+                'audio_bytes': audio_bytes,
+                'audio_size': audio_size,
+                'text': row['text'],
+                'split': split,
+                'language': lang,
+                'corpus': corpus
+            })
+        
+        # Create partition directory
+        partition_dir = (
+            output_dir / "version=0" / 
+            f"language={lang}" / 
+            f"corpus={corpus}" / 
+            f"split={split}"
+        )
+        partition_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Write parquet file
+        partition_df = pd.DataFrame(records)
+        table = pa.Table.from_pandas(partition_df)
+        
+        output_file = partition_dir / "part-0.parquet"
+        pq.write_table(table, output_file)
+        
+        print(f"Created {output_file} with {len(records)} examples")
+
+# Create dataset
+output_dir = Path("./my_custom_dataset")
+create_parquet_dataset(data, output_dir)
+```
+
+### Step 3: Create Language Distribution File
+
+For weighted sampling during training, create a TSV file with language/corpus statistics:
+
+```python
+import pandas as pd
+
+def calculate_dataset_statistics(dataset_path: Path):
+    """Calculate hours per language and corpus."""
+    
+    stats = []
+    
+    # Iterate through all parquet files
+    for parquet_file in dataset_path.rglob("*.parquet"):
+        df = pd.read_parquet(parquet_file)
+        
+        # Calculate total hours (assuming 16kHz)
+        total_samples = df['audio_size'].sum()
+        hours = total_samples / 16000 / 3600
+        
+        # Get partition info from first row
+        language = df['language'].iloc[0]
+        corpus = df['corpus'].iloc[0]
+        
+        stats.append({
+            'language': language,
+            'corpus': corpus,
+            'hours': hours
+        })
+    
+    # Aggregate by language and corpus
+    stats_df = pd.DataFrame(stats)
+    stats_df = stats_df.groupby(['corpus', 'language'])['hours'].sum().reset_index()
+    
+    return stats_df
+
+# Generate statistics
+stats_df = calculate_dataset_statistics(output_dir / "version=0")
+stats_df.to_csv(
+    output_dir / "version=0" / "language_distribution_0.tsv",
+    sep='\t',
+    index=False
+)
+
+print(stats_df)
+```
+
+**Example output:**
+```
+corpus          language    hours
+my_corpus       eng_Latn    12.5
+my_corpus       spa_Latn    8.3
+another_corpus  fra_Latn    15.2
+```
+
+## Defining the Dataset Asset Card
+
+Create a YAML asset card for your dataset:
+
+```yaml title="/src/omnilingual_asr/cards/datasets/my_dataset.yaml"
+name: my_custom_dataset
+dataset_family: mixture_parquet_asr_dataset
+dataset_config:
+  data: /path/to/my_custom_dataset/version=0
+tokenizer_ref: omniASR_tokenizer_written_v2
+```
+
+### Asset Card Fields
+
+<AccordionGroup>
+<Accordion title="name">
+Unique identifier for loading the dataset.
+
+**Type:** String  
+**Example:** `my_custom_dataset`
+</Accordion>
+
+<Accordion title="dataset_family">
+Dataset implementation type. Use `mixture_parquet_asr_dataset` for parquet-based datasets.
+
+**Type:** String  
+**Value:** `mixture_parquet_asr_dataset`
+</Accordion>
+
+<Accordion title="dataset_config.data">
+Path to the dataset directory (should point to `version=0` directory).
+
+**Type:** Path  
+**Example:** `/data/datasets/my_dataset/version=0`
+</Accordion>
+
+<Accordion title="tokenizer_ref">
+Reference to the tokenizer asset card.
+
+**Type:** String  
+**Example:** `omniASR_tokenizer_written_v2`
+</Accordion>
+</AccordionGroup>
+
+## Integrating with Training
+
+### Training Configuration
+
+Reference your dataset in a training recipe:
+
+```yaml title="configs/custom-training.yaml"
+model:
+  name: "omniASR_CTC_300M_v2"
+
+dataset:
+  name: "my_custom_dataset"
+  train_split: "train"
+  valid_split: "dev"
+  storage_mode: "MIXTURE_PARQUET"
+  task_mode: "ASR"
+  
+  # Storage configuration
+  mixture_parquet_storage_config:
+    dataset_summary_path: "/path/to/my_custom_dataset/version=0/language_distribution_0.tsv"
+    beta_corpus: 0.5
+    beta_language: 0.5
+    fragment_loading:
+      cache: True
+      nb_prefetch: 1
+  
+  # Task configuration
+  asr_task_config:
+    min_audio_len: 32_000
+    max_audio_len: 960_000
+    max_num_elements: 960_000
+    batching_strategy: "LENGTH"
+    normalize_audio: true
+
+tokenizer:
+  name: "omniASR_tokenizer_written_v2"
+
+optimizer:
+  config:
+    lr: 5e-05
+
+trainer:
+  mixed_precision:
+    dtype: "torch.bfloat16"
+  grad_accumulation:
+    num_batches: 4
+
+regime:
+  num_steps: 20_000
+  validate_every_n_steps: 1000
+  checkpoint_every_n_steps: 1000
+```
+
+### Weighted Sampling Configuration
+
+Control how different corpora and languages are sampled:
+
+<CodeGroup>
+```yaml Balanced Sampling
+mixture_parquet_storage_config:
+  dataset_summary_path: "path/to/language_distribution_0.tsv"
+  beta_corpus: 0.5      # Moderate corpus balancing
+  beta_language: 0.5    # Moderate language balancing
+```
+
+```yaml Proportional Sampling
+mixture_parquet_storage_config:
+  dataset_summary_path: "path/to/language_distribution_0.tsv"
+  beta_corpus: 1.0      # Sample proportional to corpus size
+  beta_language: 1.0    # Sample proportional to language size
+```
+
+```yaml Strong Balancing
+mixture_parquet_storage_config:
+  dataset_summary_path: "path/to/language_distribution_0.tsv"
+  beta_corpus: 0.2      # Strong corpus balancing
+  beta_language: 0.2    # Strong language balancing
+```
+</CodeGroup>
+
+**How beta values work** (see `/src/omnilingual_asr/datasets/storage/mixture_parquet_storage.py:338-397`):
+
+```python
+# Weight calculation
+weight = (hours / total_hours) ** beta
+norm_weight = weight / weight.sum()
+
+# beta = 1.0: Proportional to data size
+# beta = 0.5: Square root balancing
+# beta = 0.0: Uniform sampling (all equal)
+```
+
+## Advanced Dataset Features
+
+### Multiple Splits
+
+Create train, dev, and test splits:
+
+```python
+splits = ['train', 'dev', 'test']
+
+for split in splits:
+    split_data = [d for d in data if d['split'] == split]
+    create_parquet_dataset(split_data, output_dir)
+```
+
+Access different splits:
+
+```yaml
+dataset:
+  name: "my_custom_dataset"
+  train_split: "train"
+  valid_split: "dev"
+  # test_split: "test"  # Optional
+```
+
+### Multiple Corpora
+
+Combine multiple corpora in one dataset:
+
+```python
+data = [
+    # Corpus 1
+    {"text": "...", "corpus": "librispeech", "language": "eng_Latn"},
+    
+    # Corpus 2
+    {"text": "...", "corpus": "common_voice", "language": "eng_Latn"},
+    
+    # Corpus 3 - different language
+    {"text": "...", "corpus": "common_voice", "language": "spa_Latn"},
+]
+```
+
+### Filtering by Corpus
+
+Train on specific corpus using split naming:
+
+```yaml
+dataset:
+  name: "my_custom_dataset"
+  train_split: "train_librispeech"  # Only librispeech corpus
+  valid_split: "dev"
+```
+
+**Implementation:** See `/src/omnilingual_asr/datasets/storage/mixture_parquet_storage.py:400-429`
+
+### Partition Filters
+
+Filter specific languages during training:
+
+```yaml
+mixture_parquet_storage_config:
+  fragment_streaming:
+    partition_filters:
+      - "language == 'eng_Latn'"
+      - "language == 'spa_Latn'"
+```
+
+## Validation and Testing
+
+### Verify Dataset Structure
+
+```python
+import pyarrow.parquet as pq
+from pathlib import Path
+
+def validate_dataset(dataset_path: Path):
+    """Validate dataset structure and schema."""
+    
+    required_columns = {
+        'audio_bytes', 'audio_size', 'text', 
+        'split', 'language', 'corpus'
+    }
+    
+    issues = []
+    
+    for parquet_file in dataset_path.rglob("*.parquet"):
+        try:
+            table = pq.read_table(parquet_file)
+            
+            # Check schema
+            columns = set(table.column_names)
+            missing = required_columns - columns
+            if missing:
+                issues.append(
+                    f"{parquet_file}: Missing columns {missing}"
+                )
+            
+            # Check data types
+            df = table.to_pandas()
+            if df['audio_size'].dtype != 'int64':
+                issues.append(
+                    f"{parquet_file}: audio_size should be int64"
+                )
+            
+            # Check for nulls
+            if df.isnull().any().any():
+                issues.append(f"{parquet_file}: Contains null values")
+            
+            print(f"✓ {parquet_file}: {len(df)} examples")
+            
+        except Exception as e:
+            issues.append(f"{parquet_file}: {e}")
+    
+    if issues:
+        print("\n⚠️  Issues found:")
+        for issue in issues:
+            print(f"  - {issue}")
+    else:
+        print("\n✓ Dataset validation passed!")
+    
+    return len(issues) == 0
+
+# Validate
+validate_dataset(Path("./my_custom_dataset/version=0"))
+```
+
+### Test Loading
+
+```python
+from omnilingual_asr.datasets.impl.mixture_parquet_asr_dataset import (
+    open_mixture_parquet_asr_dataset,
+    MixtureParquetAsrDatasetConfig
+)
+
+# Test dataset loading
+config = MixtureParquetAsrDatasetConfig(
+    data=Path("/path/to/my_custom_dataset/version=0")
+)
+
+dataset = open_mixture_parquet_asr_dataset(config)
+print(f"Dataset loaded: {dataset}")
+print(f"Available splits: {dataset._splits}")
+```
+
+## Best Practices
+
+<AccordionGroup>
+<Accordion title="Audio Format Consistency">
+Ensure all audio is:
+- **16kHz sample rate**
+- **Mono** (single channel)
+- **16-bit PCM** (standard WAV format)
+
+```python
+# Standardize audio before writing
+audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+if len(audio.shape) > 1:
+    audio = audio.mean(axis=1)
+```
+</Accordion>
+
+<Accordion title="Partition Size">
+Keep partition sizes reasonable:
+- **Target:** 1000-10000 examples per parquet file
+- **Max size:** ~500MB per file
+- Split large corpora into multiple `part-N.parquet` files
+
+```python
+# Split large partitions
+for i in range(0, len(records), 5000):
+    chunk = records[i:i+5000]
+    pq.write_table(
+        pa.Table.from_pandas(pd.DataFrame(chunk)),
+        partition_dir / f"part-{i//5000}.parquet"
+    )
+```
+</Accordion>
+
+<Accordion title="Text Normalization">
+Normalize text before creating the dataset:
+
+```python
+def normalize_text(text: str) -> str:
+    # Lowercase (optional, depends on use case)
+    text = text.lower()
+    
+    # Remove extra whitespace
+    text = ' '.join(text.split())
+    
+    # Remove or normalize punctuation (optional)
+    # text = text.translate(str.maketrans('', '', string.punctuation))
+    
+    return text
+
+records['text'] = records['text'].apply(normalize_text)
+```
+</Accordion>
+
+<Accordion title="Language ID Validation">
+Verify language IDs are supported:
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+def validate_language_ids(data):
+    unique_langs = set(d['language'] for d in data)
+    
+    for lang in unique_langs:
+        if lang not in supported_langs:
+            print(f"⚠️  Warning: {lang} not in supported languages")
+            # Find similar
+            similar = [l for l in supported_langs if l.startswith(lang[:3])]
+            if similar:
+                print(f"   Did you mean: {similar[:3]}")
+
+validate_language_ids(data)
+```
+</Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="No parquet files found for split">
+```
+AssertionError: No parquet files found for the current split train.
+```
+
+Check:
+1. Dataset path is correct in asset card
+2. Split name matches directory structure: `split=train`
+3. Parquet files exist in the partition directories
+
+```python
+# Debug
+import pyarrow.parquet as pq
+dataset = pq.ParquetDataset("/path/to/dataset/version=0")
+print(dataset.partitioning.schema.names)  # Should include 'split'
+```
+</Accordion>
+
+<Accordion title="Schema mismatch errors">
+```
+KeyError: 'audio_bytes'
+```
+
+Ensure column names match exactly:
+```python
+required_schema = {
+    'audio_bytes': pa.binary(),
+    'audio_size': pa.int64(),
+    'text': pa.string(),
+    'split': pa.string(),
+    'language': pa.string(),
+    'corpus': pa.string(),
+}
+```
+</Accordion>
+
+<Accordion title="Memory issues during creation">
+Process large datasets in chunks:
+
+```python
+CHUNK_SIZE = 1000
+
+for i in range(0, len(data), CHUNK_SIZE):
+    chunk = data[i:i+CHUNK_SIZE]
+    create_parquet_dataset(chunk, output_dir)
+    print(f"Processed {i+CHUNK_SIZE}/{len(data)}")
+```
+</Accordion>
+</AccordionGroup>
+
+## Example: Complete Workflow
+
+Putting it all together:
+
+```python
+from pathlib import Path
+import pandas as pd
+import soundfile as sf
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+# 1. Prepare data
+data = [
+    {
+        "audio_path": f"audio/{i}.wav",
+        "text": f"Transcription {i}",
+        "split": "train" if i < 80 else "dev",
+        "language": "eng_Latn",
+        "corpus": "my_corpus"
+    }
+    for i in range(100)
+]
+
+# 2. Create parquet dataset
+output_dir = Path("./my_dataset")
+create_parquet_dataset(data, output_dir)
+
+# 3. Generate statistics
+stats_df = calculate_dataset_statistics(output_dir / "version=0")
+stats_df.to_csv(
+    output_dir / "version=0" / "language_distribution_0.tsv",
+    sep='\t',
+    index=False
+)
+
+# 4. Create asset card
+asset_card = """
+name: my_dataset
+dataset_family: mixture_parquet_asr_dataset
+dataset_config:
+  data: ./my_dataset/version=0
+tokenizer_ref: omniASR_tokenizer_written_v2
+"""
+
+with open("src/omnilingual_asr/cards/datasets/my_dataset.yaml", "w") as f:
+    f.write(asset_card)
+
+print("✓ Dataset created successfully!")
+```

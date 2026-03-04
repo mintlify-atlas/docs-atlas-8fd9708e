@@ -1,80 +1,296 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get started with Omnilingual ASR in minutes
 ---
 
-## Get started in three steps
+Get up and running with Omnilingual ASR to transcribe your first audio file in just a few steps.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+<Check>Omnilingual ASR installed (see [Installation](/installation))</Check>
+<Check>Python 3.10 or higher</Check>
+<Check>Audio file ready for transcription</Check>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## Your First Transcription
+
+<Steps>
+  <Step title="Install Omnilingual ASR">
+    Install the package using pip or uv:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    <CodeGroup>
+    ```bash pip
+    pip install omnilingual-asr
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash uv
+    uv add omnilingual-asr
+    ```
+    </CodeGroup>
+  </Step>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+  <Step title="Create a Python Script">
+    Create a new file `transcribe.py` with the following code:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```python transcribe.py
+    from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    # Initialize the pipeline with a model
+    pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_7B_v2")
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    # Transcribe an audio file
+    audio_files = ["/path/to/your/audio.wav"]
+    transcriptions = pipeline.transcribe(audio_files, batch_size=1)
 
-### Step 3: Go live
+    # Print the result
+    print(f"Transcription: {transcriptions[0]}")
+    ```
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Run the Script">
+    Execute your script:
+    
+    ```bash
+    python transcribe.py
+    ```
+    
+    The model will be automatically downloaded on first use and cached for future runs.
+  </Step>
+</Steps>
 
-## Next steps
+<Tip>
+  The first run will download the model (~30 GiB for the 7B model). Subsequent runs will use the cached model from `~/.cache/fairseq2/assets/`.
+</Tip>
 
-Now that you have your docs running, explore these key features:
+## Choose Your Model
+
+Different models offer different trade-offs between speed, accuracy, and features:
+
+<Tabs>
+  <Tab title="CTC Models (Fast)">
+    **Best for**: High-throughput batch processing
+    
+    ```python
+    from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+    # Fast parallel generation
+    pipeline = ASRInferencePipeline(model_card="omniASR_CTC_1B_v2")
+    
+    audio_files = ["/path/to/audio1.wav", "/path/to/audio2.wav"]
+    transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+    ```
+    
+    - **Speed**: 16x to 96x faster than real-time
+    - **VRAM**: 2-15 GiB depending on model size
+    - **Limitation**: No language conditioning
+  </Tab>
+
+  <Tab title="LLM Models (Accurate)">
+    **Best for**: Maximum accuracy with language conditioning
+    
+    ```python
+    from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+    # Language-conditioned transcription
+    pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_v2")
+    
+    audio_files = ["/path/to/english.wav", "/path/to/spanish.wav"]
+    languages = ["eng_Latn", "spa_Latn"]
+    
+    transcriptions = pipeline.transcribe(
+        audio_files, 
+        lang=languages,
+        batch_size=2
+    )
+    ```
+    
+    - **Speed**: ~1x real-time
+    - **VRAM**: 5-17 GiB depending on model size
+    - **Feature**: Optional language conditioning
+    
+    <Tip>
+      Providing language codes improves transcription quality. See [Supported Languages](/supported-languages) for the full list.
+    </Tip>
+  </Tab>
+
+  <Tab title="Zero-Shot (Few Examples)">
+    **Best for**: New languages with limited data
+    
+    ```python
+    from omnilingual_asr.models.inference.pipeline import (
+        ASRInferencePipeline,
+        ContextExample
+    )
+
+    pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+
+    # Provide 1-10 context examples
+    context = [
+        ContextExample("/path/to/example1.wav", "Example text one"),
+        ContextExample("/path/to/example2.wav", "Example text two"),
+        ContextExample("/path/to/example3.wav", "Example text three")
+    ]
+
+    transcriptions = pipeline.transcribe_with_context(
+        ["/path/to/test.wav"],
+        context_examples=[context],
+        batch_size=1
+    )
+    ```
+    
+    - **Speed**: ~0.5x real-time
+    - **VRAM**: ~20 GiB
+    - **Feature**: In-context learning with examples
+  </Tab>
+</Tabs>
+
+## Audio Input Formats
+
+The pipeline accepts multiple audio input formats:
+
+<CodeGroup>
+```python File Paths
+# Most common: provide file paths
+audio_files = [
+    "/path/to/audio1.flac",
+    "/path/to/audio2.wav",
+    "/path/to/audio3.mp3"
+]
+transcriptions = pipeline.transcribe(audio_files, batch_size=3)
+```
+
+```python Binary Data
+# Read audio as binary data
+with open("audio.wav", "rb") as f:
+    audio_bytes = f.read()
+
+transcriptions = pipeline.transcribe([audio_bytes], batch_size=1)
+```
+
+```python Pre-decoded Audio
+# Already decoded audio (from numpy, torch, etc.)
+import torch
+
+audio_data = [{
+    "waveform": torch.randn(1, 16000),  # 1 second at 16kHz
+    "sample_rate": 16000
+}]
+
+transcriptions = pipeline.transcribe(audio_data, batch_size=1)
+```
+
+```python HuggingFace Dataset
+from datasets import load_dataset
+
+# Load from HuggingFace
+dataset = load_dataset(
+    "facebook/omnilingual-asr-corpus",
+    "eng_Latn",
+    split="train",
+    streaming=True
+)
+batch = next(dataset.iter(5))
+
+audio_data = [{
+    "waveform": x["array"],
+    "sample_rate": x["sampling_rate"]
+} for x in batch["audio"]]
+
+transcriptions = pipeline.transcribe(audio_data, batch_size=2)
+```
+</CodeGroup>
+
+<Warning>
+  **Audio Length Constraint**: Currently, only audio files shorter than 40 seconds are accepted for CTC and standard LLM models. Use `omniASR_LLM_Unlimited_*` models for longer audio.
+</Warning>
+
+## Model Size Comparison
+
+Choose a model size based on your available resources:
+
+| Model Size | Parameters | VRAM (CTC) | VRAM (LLM) | Speed (CTC) | Speed (LLM) |
+|------------|-----------|-----------|-----------|-------------|-------------|
+| 300M       | 317-1,627M | ~2 GiB    | ~5 GiB    | 96x RT      | ~1x RT      |
+| 1B         | 965-2,275M | ~3 GiB    | ~6 GiB    | 48x RT      | ~1x RT      |
+| 3B         | 3,064-4,376M | ~8 GiB  | ~10 GiB   | 32x RT      | ~1x RT      |
+| 7B         | 6,488-7,801M | ~15 GiB | ~17 GiB   | 16x RT      | ~1x RT      |
+
+<Info>
+  RT = Real-Time. "96x RT" means the model processes audio 96 times faster than real-time.
+</Info>
+
+## Complete Example
+
+Here's a complete working example that transcribes multiple audio files with language conditioning:
+
+```python complete_example.py
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Initialize pipeline
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_1B_v2")
+
+# Prepare audio files and languages
+audio_files = [
+    "/path/to/english_speech.wav",
+    "/path/to/french_speech.wav",
+    "/path/to/mandarin_speech.wav",
+]
+
+languages = [
+    "eng_Latn",  # English (Latin script)
+    "fra_Latn",  # French (Latin script)
+    "cmn_Hans",  # Mandarin Chinese (Simplified)
+]
+
+# Transcribe with language conditioning
+transcriptions = pipeline.transcribe(
+    audio_files,
+    lang=languages,
+    batch_size=2
+)
+
+# Print results
+for audio, lang, text in zip(audio_files, languages, transcriptions):
+    print(f"\nFile: {audio}")
+    print(f"Language: {lang}")
+    print(f"Transcription: {text}")
+```
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Explore Models" icon="microchip" href="/models/model-specifications">
+    Learn about all available model variants and their specifications
+  </Card>
+  <Card title="Advanced Inference" icon="wand-magic-sparkle" href="/guides/inference">
+    Explore batch processing, context examples, and optimization
+  </Card>
+  <Card title="Language Support" icon="globe" href="/supported-languages">
+    Browse the full list of 1600+ supported languages
+  </Card>
+  <Card title="Training Guide" icon="graduation-cap" href="/guides/training">
+    Fine-tune models on your own data
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Model download is slow">
+    Models are large (1.2 GiB to 30 GiB). The first download may take time depending on your internet connection. Models are cached in `~/.cache/fairseq2/assets/` for future use.
+  </Accordion>
+
+  <Accordion title="Out of memory errors">
+    Try a smaller model (300M or 1B instead of 3B or 7B), reduce batch size to 1, or use a GPU with more VRAM.
+  </Accordion>
+
+  <Accordion title="libsndfile errors">
+    Install the system dependency:
+    - **macOS**: `brew install libsndfile`
+    - **Ubuntu/Debian**: `sudo apt-get install libsndfile1`
+    - **Windows**: See the [fairseq2 installation guide](https://github.com/facebookresearch/fairseq2#installing-on-windows)
+  </Accordion>
+
+  <Accordion title="Audio is longer than 40 seconds">
+    Use the unlimited-length models: `omniASR_LLM_Unlimited_{300M,1B,3B,7B}_v2` which support audio of any length.
+  </Accordion>
+</AccordionGroup>

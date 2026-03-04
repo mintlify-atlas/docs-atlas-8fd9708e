@@ -1,0 +1,132 @@
+---
+title: Introduction
+description: Open-source multilingual speech recognition for 1600+ languages
+---
+
+<img
+  src="https://raw.githubusercontent.com/facebookresearch/omnilingual-asr/main/omniASR_header.jpg"
+  alt="Header image with a collage of on-the-ground photos from the transcription gathering efforts in Pakistan and Liberia"
+/>
+
+## Welcome to Omnilingual ASR
+
+Omnilingual ASR is an open-source speech recognition system supporting over **1,600 languages** — including hundreds never previously covered by any ASR technology. Designed for broad accessibility, it enables new languages to be added with just a few paired examples without requiring specialized expertise or large datasets.
+
+By combining scalable zero-shot learning with a flexible model family, Omnilingual ASR aims to make speech technology more inclusive and adaptable for communities and researchers worldwide.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get transcribing audio in minutes with simple Python code
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install via pip or uv and set up your environment
+  </Card>
+  <Card title="Supported Languages" icon="globe" href="/supported-languages">
+    Explore 1600+ languages with language ID format reference
+  </Card>
+  <Card title="Model Architecture" icon="brain" href="/guides/model-architectures">
+    Learn about W2V, CTC, and LLM model families
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="1600+ Language Support" icon="language">
+    State-of-the-art performance across 1,600+ languages with character error rates (CER) below 10% for 78% of those languages. Includes hundreds of languages never previously covered by ASR technology.
+  </Accordion>
+  
+  <Accordion title="Multiple Model Families" icon="layer-group">
+    Choose from three model architectures:
+    - **CTC Models**: Fast parallel generation (up to 96x real-time)
+    - **LLM Models**: Language-conditioned transcription with optional context
+    - **Zero-Shot Models**: Transcribe new languages with just a few examples
+  </Accordion>
+  
+  <Accordion title="Flexible Model Sizes" icon="sliders">
+    Available in 300M, 1B, 3B, and 7B parameter variants to balance accuracy and computational resources.
+  </Accordion>
+  
+  <Accordion title="Zero-Shot Learning" icon="wand-magic-sparkle">
+    Add support for new languages with just a few paired audio-text examples using the zero-shot model variant.
+  </Accordion>
+</AccordionGroup>
+
+## Performance Highlights
+
+<img
+  src="https://raw.githubusercontent.com/facebookresearch/omnilingual-asr/main/result_table.png"
+  alt="Performance results table"
+/>
+
+Our 7B-LLM-ASR system achieves state-of-the-art performance across 1,600+ languages, with character error rates (CER) below 10 for 78% of those languages.
+
+<Tip>
+Per-language CER results and training hours can be found in the [per_language_results_table_7B_llm_asr.csv](https://github.com/facebookresearch/omnilingual-asr/blob/main/per_language_results_table_7B_llm_asr.csv) file.
+</Tip>
+
+## Model Architecture Overview
+
+Omnilingual ASR provides three distinct model families:
+
+### SSL (Self-Supervised Learning) Models
+Pre-trained wav2vec2 encoders that learn speech representations without transcriptions. These serve as the foundation for both CTC and LLM models.
+
+### CTC (Connectionist Temporal Classification) Models
+Fast, parallel transcription models ideal for real-time applications:
+- **Real-Time Factor**: 0.001-0.006 (16x to 96x faster than real-time)
+- **Use Case**: High-throughput batch processing
+- **Limitation**: No language conditioning support
+
+### LLM (Language Model) Models
+Autoregressive models with optional language conditioning:
+- **Real-Time Factor**: ~0.09 (approximately real-time)
+- **Language Conditioning**: Specify target language for better accuracy
+- **Unlimited Variants**: Support for audio of any length
+- **Zero-Shot Variant**: Learn new languages from context examples
+
+## December 2025 Update
+
+We released two major improvements:
+
+1. **Improved v2 Models**: Enhanced accuracy (CER) for both CTC and LLM-ASR models
+2. **Unlimited Audio Length**: New LLM variant supporting transcription of unlimited-length audio (`omniASR_LLM_Unlimited_{300M,1B,3B,7B}_v2`)
+
+<Warning>
+Unlimited audio length models have comparable accuracy to limited-length models, however finetuning recipes for these models are currently not supported.
+</Warning>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Research Paper" icon="file-lines" href="https://ai.meta.com/research/publications/omnilingual-asr-open-source-multilingual-speech-recognition-for-1600-languages/">
+    Read the full technical paper
+  </Card>
+  <Card title="Blog Post" icon="newspaper" href="http://ai.meta.com/blog/omnilingual-asr-advancing-automatic-speech-recognition">
+    Learn about the research and development
+  </Card>
+  <Card title="HuggingFace Demo" icon="rocket" href="https://huggingface.co/spaces/facebook/omniasr-transcriptions">
+    Try the interactive demo
+  </Card>
+  <Card title="Dataset" icon="database" href="https://huggingface.co/datasets/facebook/omnilingual-asr-corpus">
+    Access the multilingual corpus
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Install the Package">
+    Follow the [installation guide](/installation) to set up Omnilingual ASR in your environment.
+  </Step>
+  <Step title="Run Your First Transcription">
+    Try the [quick start guide](/quickstart) to transcribe your first audio file.
+  </Step>
+  <Step title="Explore Advanced Features">
+    Learn about [language conditioning](/advanced/language-conditioning) and [zero-shot learning](/models/zero-shot).
+  </Step>
+</Steps>
+
+## License
+
+Omnilingual ASR code and models are released under the [Apache 2.0 License](https://github.com/facebookresearch/omnilingual-asr/blob/main/LICENSE).

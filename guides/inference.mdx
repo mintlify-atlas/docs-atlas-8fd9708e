@@ -1,0 +1,456 @@
+---
+title: Inference Guide
+description: Complete guide to running inference with Omnilingual ASR models
+icon: play
+---
+
+Learn how to transcribe audio with our multilingual ASR models, from quick start to advanced usage patterns.
+
+## Quick Start
+
+Get started with Omnilingual ASR inference in just a few lines:
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_CTC_1B_v2")
+transcriptions = pipeline.transcribe(["/path/to/audio1.flac"], batch_size=1)
+print(transcriptions[0])
+```
+
+<Note>
+  The models were trained on audio durations of 30 seconds or less. We recommend keeping samples under 30 seconds for optimal performance.
+</Note>
+
+<Warning>
+  Currently only audio files shorter than 40 seconds are accepted for inference.
+</Warning>
+
+## Audio Input Formats
+
+The inference pipeline accepts multiple input formats through the `AudioInput` type:
+
+<Tabs>
+  <Tab title="File Paths">
+    The simplest approach - provide paths to audio files:
+
+    ```python
+    audio_files = ["/path/to/audio.wav", "/path/to/audio.flac"]
+    transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+    ```
+
+    Supported formats: `.wav`, `.flac`
+  </Tab>
+
+  <Tab title="Binary Data">
+    Pass encoded audio binary data directly in memory:
+
+    ```python
+    # From file handle
+    audio_bytes = [open("audio.wav", "rb").read()]
+    
+    # From numpy array (int8)
+    audio_array = [numpy_audio_array]  
+    
+    transcriptions = pipeline.transcribe(audio_bytes, batch_size=1)
+    ```
+  </Tab>
+
+  <Tab title="Decoded Audio">
+    Provide pre-decoded audio waveforms:
+
+    ```python
+    audio_dict = [{
+        "waveform": tensor,      # Audio tensor
+        "sample_rate": 16000     # Sample rate in Hz
+    }]
+    
+    transcriptions = pipeline.transcribe(audio_dict, batch_size=1)
+    ```
+  </Tab>
+</Tabs>
+
+### Audio Preprocessing
+
+All audio inputs undergo automatic preprocessing:
+
+<Steps>
+  <Step title="Decode">
+    Encoded audio (`.wav`/`.flac`) is decoded to raw waveforms
+  </Step>
+  
+  <Step title="Resample">
+    Audio is resampled to 16kHz for model compatibility
+  </Step>
+  
+  <Step title="Convert to Mono">
+    Multi-channel audio is converted to mono-channel
+  </Step>
+  
+  <Step title="Normalize">
+    Waveforms are normalized before model ingestion
+  </Step>
+</Steps>
+
+<Tip>
+  We recommend keeping this preprocessing pipeline similar when integrating the model in downstream applications.
+</Tip>
+
+## Batch Processing
+
+Process multiple audio files efficiently with batching:
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_CTC_1B_v2")
+
+audio_files = ["/path/to/audio1.flac", "/path/to/audio2.wav"]
+transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+
+for file, trans in zip(audio_files, transcriptions):
+    print(f"{file}: {trans}")
+```
+
+<Note>
+  Adjust `batch_size` based on your GPU memory. Larger batches increase throughput but require more memory.
+</Note>
+
+## Model Types
+
+Omnilingual ASR offers three model families, each optimized for different use cases:
+
+### CTC Models
+
+Parallel generation models optimized for speed and throughput.
+
+<CodeGroup>
+```python Basic Usage
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_CTC_3B_v2", 
+    device=None
+)
+
+audio_files = ["/path/to/audio1.flac", "/path/to/audio2.wav"]
+transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+
+for file_path, text in zip(audio_files, transcriptions):
+    print(f"CTC transcription - {file_path}: {text}")
+```
+
+```python Available Models
+# CTC model variants by size
+models = [
+    "omniASR_CTC_300M_v2",
+    "omniASR_CTC_1B_v2",
+    "omniASR_CTC_3B_v2",
+    "omniASR_CTC_7B_v2"
+]
+```
+</CodeGroup>
+
+**Key Features:**
+- Fastest inference with parallel generation
+- No language conditioning support
+- No context example support
+- Ideal for on-device transcription
+
+**When to Use:**
+- High-throughput scenarios
+- Real-time transcription needs
+- Resource-constrained environments
+- Single-language applications
+
+---
+
+### LLM Models
+
+Autoregressive models with language conditioning for enhanced accuracy.
+
+<CodeGroup>
+```python With Language Codes
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_1B_v2")
+
+audio_files = [
+    "/path/to/russian_audio.wav",
+    "/path/to/english_audio.flac",
+    "/path/to/german_audio.wav"
+]
+
+transcriptions = pipeline.transcribe(
+    audio_files, 
+    lang=["rus_Cyrl", "eng_Latn", "deu_Latn"], 
+    batch_size=3
+)
+```
+
+```python Without Language Codes
+# Language codes are optional
+transcriptions = pipeline.transcribe(
+    audio_files,
+    batch_size=3  # No lang parameter
+)
+```
+</CodeGroup>
+
+**Available Variants:**
+
+<Tabs>
+  <Tab title="Standard LLM+LID">
+    Language-conditioned models with optional language identification:
+    
+    - `omniASR_LLM_300M_v2`
+    - `omniASR_LLM_1B_v2`
+    - `omniASR_LLM_3B_v2`
+    - `omniASR_LLM_7B_v2`
+    
+    Trained with 80/20 split of samples with/without language IDs.
+  </Tab>
+  
+  <Tab title="Unlimited Length">
+    Extended models for transcribing unlimited-length audio:
+    
+    - `omniASR_LLM_Unlimited_300M_v2`
+    - `omniASR_LLM_Unlimited_1B_v2`
+    - `omniASR_LLM_Unlimited_3B_v2`
+    - `omniASR_LLM_Unlimited_7B_v2`
+    
+    Uses 15-second segments with context from previous segment (M=1).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Providing language codes improves transcription quality. Find language codes in [lang_ids.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py) or [the paper's Appendix A](https://ai.meta.com/research/publications/omnilingual-asr-open-source-multilingual-speech-recognition-for-1600-languages/).
+</Tip>
+
+---
+
+### Zero-Shot Models
+
+In-context learning models for unseen languages using audio-text example pairs.
+
+```python
+from omnilingual_asr.models.inference.pipeline import (
+    ASRInferencePipeline,
+    ContextExample
+)
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+
+# Provide 1-10 context examples
+context_examples = [
+    ContextExample("/path/to/context_audio1.wav", "Hello world"),
+    ContextExample("/path/to/context_audio2.wav", "How are you today"),
+    ContextExample("/path/to/context_audio3.flac", "Nice to meet you")
+]
+
+transcriptions = pipeline.transcribe_with_context(
+    ["/path/to/test_audio.wav"],
+    context_examples=[context_examples],
+    batch_size=1
+)
+
+print(f"Transcription: {transcriptions[0]}")
+```
+
+<Note>
+  The model uses exactly 10 context slots internally. If fewer than 10 examples are provided, samples are duplicated sequentially to fill all slots. If more than 10 are provided, they're cropped.
+</Note>
+
+<Warning>
+  Context samples should be up to 30 seconds in length. The model supports a maximum audio length of 60 seconds but performs suboptimally with longer samples.
+</Warning>
+
+**When to Use:**
+- Transcribing rare or low-resource languages
+- Languages not in the training set
+- Domain-specific vocabulary or accents
+- Few-shot learning scenarios
+
+## Advanced Usage
+
+### Parquet Dataset Input
+
+Use training-format parquet datasets directly for inference:
+
+```python
+import pyarrow.parquet as pq
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+ds = pq.ParquetDataset("/path/to/dataset/")
+batch_data = ds._dataset.head(10).to_pandas()  # First 10 samples
+audio_bytes = batch_data["audio_bytes"].tolist()
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_1B_v2")
+transcriptions = pipeline.transcribe(audio_bytes, batch_size=4)
+
+for i, text in enumerate(transcriptions):
+    print(f"Sample {i+1}: {text}")
+```
+
+See the [Data Preparation Guide](/guides/data-preparation) for parquet schema details.
+
+---
+
+### HuggingFace Datasets
+
+Integrate with HuggingFace datasets seamlessly:
+
+```python
+from datasets import load_dataset
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Load dataset
+omni_dataset = load_dataset(
+    "facebook/omnilingual-asr-corpus", 
+    "lij_Latn", 
+    split="train", 
+    streaming=True
+)
+batch = next(omni_dataset.iter(5))
+
+# Convert to pipeline format
+audio_data = [
+    {"waveform": x["array"], "sample_rate": x["sampling_rate"]}
+    for x in batch["audio"]
+]
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_1B_v2")
+transcriptions = pipeline.transcribe(audio_data, batch_size=2)
+
+for i, text in enumerate(transcriptions):
+    print(f"Sample {i+1}: {text}")
+```
+
+---
+
+### Model Input Format Specification
+
+For advanced users integrating models with fairseq2's `Seq2SeqBatch` interface:
+
+<Warning>
+  The behavior of `.forward()` varies depending on batch structure. Extra fields in `batch.example` may change model interpretation.
+</Warning>
+
+<Accordion title="Basic ASR">
+```python
+from fairseq2.datasets.batch import Seq2SeqBatch
+
+batch = Seq2SeqBatch(
+    source_seqs=audio_tensor,        # [BS, T_audio, D_audio] - target audio
+    source_seq_lens=audio_lengths,   # [BS] - actual audio lengths
+    target_seqs=text_tensor,         # [BS, T_text] - target text tokens
+    target_seq_lens=text_lengths,    # [BS] - actual text lengths
+    example={}                       # Empty dict - no special fields
+)
+```
+</Accordion>
+
+<Accordion title="Language-Aware ASR">
+```python
+batch = Seq2SeqBatch(
+    source_seqs=audio_tensor,        # [BS, T_audio, D_audio] - target audio
+    source_seq_lens=audio_lengths,   # [BS] - actual audio lengths
+    target_seqs=text_tensor,         # [BS, T_text] - target text tokens
+    target_seq_lens=text_lengths,    # [BS] - actual text lengths
+    example={
+        "lang": ['mxs_Latn', ...]    # [BS] - language codes per sample
+    }
+)
+```
+
+Language codes must be from [lang_ids.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py).
+</Accordion>
+
+<Accordion title="Zero-Shot with Context">
+```python
+batch = Seq2SeqBatch(
+    source_seqs=audio_tensor,        # [BS, T_audio, D_audio] - target audio
+    source_seq_lens=audio_lengths,   # [BS] - actual audio lengths
+    target_seqs=text_tensor,         # [BS, T_text] - target text tokens
+    target_seq_lens=text_lengths,    # [BS] - actual text lengths
+    example={
+        "context_audio": [           # List[Dict] - BS context examples
+            {"seqs": context_audio_1, "seq_lens": [audio_len_1]},
+            # ... more context audio
+            {"seqs": context_audio_BS, "seq_lens": [audio_len_BS]},
+        ],
+        "context_text": [            # List[Dict] - BS context text
+            {"seqs": context_text_1, "seq_lens": [text_len_1]},
+            # ... more context text
+            {"seqs": context_text_BS, "seq_lens": [text_len_BS]},
+        ]
+    }
+)
+```
+</Accordion>
+
+## Punctuation and Capitalization
+
+Our models output transcripts in spoken form without punctuation or capitalization.
+
+<Note>
+  For written-form transcripts, pass outputs through a third-party punctuation restoration library like [deepmultilingualpunctuation](https://github.com/oliverguhr/deepmultilingualpunctuation).
+</Note>
+
+<Warning>
+  Most punctuation libraries only support a small subset of the 1600+ languages supported by Omnilingual ASR.
+</Warning>
+
+## Performance Optimization
+
+<AccordionGroup>
+  <Accordion title="Choose the Right Model">
+    - **CTC models**: Fastest, best for throughput
+    - **LLM models**: Better accuracy, language conditioning
+    - **Zero-shot**: For unseen languages only
+  </Accordion>
+  
+  <Accordion title="Optimize Batch Size">
+    ```python
+    # Start with small batch and increase
+    batch_sizes = [1, 2, 4, 8, 16]
+    
+    # Monitor GPU memory and adjust
+    pipeline = ASRInferencePipeline(
+        model_card="omniASR_CTC_3B_v2",
+        device="cuda:0"
+    )
+    transcriptions = pipeline.transcribe(audio_files, batch_size=8)
+    ```
+  </Accordion>
+  
+  <Accordion title="Device Selection">
+    ```python
+    # Explicit GPU selection
+    pipeline = ASRInferencePipeline(
+        model_card="omniASR_CTC_1B_v2",
+        device="cuda:0"  # or "cpu", "cuda:1", etc.
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Model Architectures" icon="network-wired" href="/guides/model-architectures">
+    Explore the technical details of W2V, CTC, and LLM model families
+  </Card>
+  
+  <Card title="Training Guide" icon="graduation-cap" href="/guides/training">
+    Learn how to fine-tune models on your own data
+  </Card>
+  
+  <Card title="Data Preparation" icon="database" href="/guides/data-preparation">
+    Prepare datasets for training and evaluation
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Detailed API documentation for all components
+  </Card>
+</CardGroup>

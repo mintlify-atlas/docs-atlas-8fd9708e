@@ -1,0 +1,357 @@
+---
+title: Installation
+description: Install Omnilingual ASR and set up your environment
+---
+
+## System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Python Version" icon="python">
+    Python 3.10, 3.11, 3.12, or 3.13
+  </Card>
+  <Card title="Operating System" icon="desktop">
+    Linux, macOS, or Windows
+  </Card>
+  <Card title="Hardware" icon="microchip">
+    CPU or CUDA-compatible GPU
+  </Card>
+  <Card title="Disk Space" icon="hard-drive">
+    1-30 GiB per model (depends on size)
+  </Card>
+</CardGroup>
+
+## System Dependencies
+
+Omnilingual ASR is built on [fairseq2](https://github.com/facebookresearch/fairseq2), which requires **libsndfile** for audio support.
+
+<Tabs>
+  <Tab title="macOS">
+    Install libsndfile using Homebrew:
+    
+    ```bash
+    brew install libsndfile
+    ```
+  </Tab>
+  
+  <Tab title="Linux">
+    Install libsndfile using your package manager:
+    
+    ```bash Ubuntu/Debian
+    sudo apt-get install libsndfile1
+    ```
+    
+    ```bash Fedora/RHEL
+    sudo dnf install libsndfile
+    ```
+    
+    ```bash Arch Linux
+    sudo pacman -S libsndfile
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    Windows may require additional setup for libsndfile. See the [fairseq2 Windows installation guide](https://github.com/facebookresearch/fairseq2?tab=readme-ov-file#installing-on-windows) for detailed instructions.
+  </Tab>
+</Tabs>
+
+## Installing Omnilingual ASR
+
+Choose your preferred installation method:
+
+<CodeGroup>
+```bash pip
+pip install omnilingual-asr
+```
+
+```bash uv
+uv add omnilingual-asr
+```
+
+```bash pip (with data tools)
+pip install "omnilingual-asr[data]"
+```
+
+```bash pip (development)
+pip install "omnilingual-asr[dev]"
+```
+</CodeGroup>
+
+### Installation Options
+
+<Tabs>
+  <Tab title="Basic">
+    **Basic Installation** (inference only):
+    
+    ```bash
+    pip install omnilingual-asr
+    ```
+    
+    This installs the core dependencies:
+    - `fairseq2[arrow]` - Core modeling framework
+    - `torch` - Deep learning framework
+    - `torchaudio` - Audio processing
+    - `pyarrow` - Data handling
+    - Other core dependencies (numba, pandas, numpy, kenlm, polars)
+  </Tab>
+  
+  <Tab title="Data Tools">
+    **With Data Tools** (for dataset preparation and HuggingFace integration):
+    
+    ```bash
+    pip install "omnilingual-asr[data]"
+    ```
+    
+    Additional packages included:
+    - `datasets` - HuggingFace datasets integration
+    - `transformers` - HuggingFace transformers
+    - `ray` - Distributed processing
+    - `soundfile`, `librosa` - Advanced audio processing
+    - `unidecode`, `uroman` - Text normalization
+    - Other data processing utilities
+  </Tab>
+  
+  <Tab title="Development">
+    **Development Installation** (for contributing):
+    
+    ```bash
+    pip install "omnilingual-asr[dev]"
+    ```
+    
+    Includes development tools:
+    - `black`, `isort` - Code formatting
+    - `flake8`, `mypy` - Linting and type checking
+    - `pytest` - Testing framework
+    - Type stubs for dependencies
+  </Tab>
+</Tabs>
+
+## Verifying Installation
+
+Verify that Omnilingual ASR is installed correctly:
+
+```python
+import omnilingual_asr
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+print(f"Omnilingual ASR version: {omnilingual_asr.__version__}")
+print("Installation successful!")
+```
+
+## GPU Support
+
+For GPU acceleration, ensure you have PyTorch installed with CUDA support:
+
+<Steps>
+  <Step title="Check CUDA Availability">
+    ```python
+    import torch
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    print(f"CUDA version: {torch.version.cuda}")
+    ```
+  </Step>
+  
+  <Step title="Install PyTorch with CUDA">
+    If CUDA is not available, install PyTorch with CUDA support:
+    
+    ```bash
+    # For CUDA 11.8
+    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+    
+    # For CUDA 12.1
+    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+    ```
+    
+    See [PyTorch installation guide](https://pytorch.org/get-started/locally/) for more options.
+  </Step>
+</Steps>
+
+<Note>
+GPU acceleration is highly recommended for faster inference, especially for larger models (3B, 7B).
+</Note>
+
+## Model Storage
+
+Models are automatically downloaded on first use and stored in the fairseq2 asset cache:
+
+<CodeGroup>
+```bash Default Location
+~/.cache/fairseq2/assets/
+```
+
+```bash Custom Location (Environment Variable)
+export FAIRSEQ2_CACHE_DIR=/path/to/custom/cache
+```
+</CodeGroup>
+
+### Model Download Sizes
+
+| Model Family | 300M | 1B | 3B | 7B |
+|--------------|------|----|----|----|
+| **W2V (SSL)** | 1.2 GiB | 3.6 GiB | 12.0 GiB | 25.0 GiB |
+| **CTC** | 1.3 GiB | 3.7 GiB | 12.0 GiB | 25.0 GiB |
+| **LLM** | 6.1 GiB | 8.5 GiB | 17.0 GiB | 30.0 GiB |
+
+<Tip>
+Ensure you have sufficient disk space before downloading larger models.
+</Tip>
+
+## Virtual Environment Setup
+
+We recommend using a virtual environment to avoid dependency conflicts:
+
+<Tabs>
+  <Tab title="venv">
+    ```bash
+    # Create virtual environment
+    python -m venv omniasr-env
+    
+    # Activate (Linux/macOS)
+    source omniasr-env/bin/activate
+    
+    # Activate (Windows)
+    omniasr-env\Scripts\activate
+    
+    # Install
+    pip install omnilingual-asr
+    ```
+  </Tab>
+  
+  <Tab title="conda">
+    ```bash
+    # Create conda environment
+    conda create -n omniasr-env python=3.10
+    
+    # Activate
+    conda activate omniasr-env
+    
+    # Install
+    pip install omnilingual-asr
+    ```
+  </Tab>
+  
+  <Tab title="uv">
+    ```bash
+    # Create project with uv
+    uv init my-asr-project
+    cd my-asr-project
+    
+    # Add omnilingual-asr
+    uv add omnilingual-asr
+    
+    # Run your script
+    uv run python your_script.py
+    ```
+  </Tab>
+</Tabs>
+
+## Installing from Source
+
+For development or to use the latest features:
+
+```bash
+# Clone the repository
+git clone https://github.com/facebookresearch/omnilingual-asr.git
+cd omnilingual-asr
+
+# Install in editable mode
+pip install -e .
+
+# Or with development dependencies
+pip install -e ".[dev]"
+```
+
+## Docker Installation
+
+For containerized environments:
+
+```dockerfile Dockerfile
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install omnilingual-asr
+RUN pip install omnilingual-asr
+
+# Your application code
+COPY . /app
+WORKDIR /app
+
+CMD ["python", "your_script.py"]
+```
+
+```bash Build and Run
+# Build the image
+docker build -t omniasr-app .
+
+# Run the container
+docker run -v $(pwd)/models:/root/.cache/fairseq2/assets omniasr-app
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: libsndfile not found">
+    Install libsndfile system dependency:
+    
+    **macOS**: `brew install libsndfile`
+    
+    **Linux**: `sudo apt-get install libsndfile1` (Ubuntu/Debian)
+    
+    **Windows**: See [fairseq2 Windows guide](https://github.com/facebookresearch/fairseq2?tab=readme-ov-file#installing-on-windows)
+  </Accordion>
+  
+  <Accordion title="CUDA version mismatch">
+    Ensure your PyTorch CUDA version matches your system CUDA version:
+    
+    ```bash
+    # Check system CUDA
+    nvidia-smi
+    
+    # Check PyTorch CUDA
+    python -c "import torch; print(torch.version.cuda)"
+    ```
+    
+    Reinstall PyTorch with matching CUDA version if needed.
+  </Accordion>
+  
+  <Accordion title="Model download fails">
+    If model downloads fail:
+    
+    1. Check your internet connection
+    2. Verify you have write permissions to `~/.cache/fairseq2/assets/`
+    3. Try setting a custom cache directory with sufficient space:
+       ```bash
+       export FAIRSEQ2_CACHE_DIR=/path/to/custom/cache
+       ```
+  </Accordion>
+  
+  <Accordion title="Python version not supported">
+    Omnilingual ASR requires Python 3.10-3.13. Check your version:
+    
+    ```bash
+    python --version
+    ```
+    
+    Install a supported Python version using your system package manager or [pyenv](https://github.com/pyenv/pyenv).
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Start transcribing audio files in minutes
+  </Card>
+  <Card title="Supported Languages" icon="globe" href="/supported-languages">
+    Explore the 1600+ supported languages
+  </Card>
+  <Card title="Model Selection" icon="sliders" href="/models/model-selection">
+    Choose the right model for your use case
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/pipeline">
+    Explore the full API documentation
+  </Card>
+</CardGroup>

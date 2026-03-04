@@ -1,0 +1,402 @@
+---
+title: 'Model Configurations'
+description: 'Configuration classes for Wav2Vec2-Llama models'
+---
+
+## Overview
+
+Omnilingual ASR uses several configuration classes to define model architecture, beam search, and streaming behavior.
+
+## Wav2Vec2LlamaConfig
+
+Top-level configuration combining Wav2Vec2 encoder and Llama decoder settings.
+
+### Structure
+
+<ParamField path="wav2vec2_asr_config" type="Wav2Vec2AsrConfig" required>
+  Wav2Vec2 configuration for encoder frontend and encoder.
+</ParamField>
+
+<ParamField path="llama_config" type="LLaMAConfig" required>
+  Llama configuration for decoder.
+</ParamField>
+
+<ParamField path="beam_search_config" type="Wav2Vec2LlamaBeamSearchConfig" default="Wav2Vec2LlamaBeamSearchConfig()">
+  Beam search configuration for LLM-ASR decoding.
+</ParamField>
+
+<ParamField path="streaming_config" type="Wav2Vec2LlamaStreamingConfig" default="Wav2Vec2LlamaStreamingConfig()">
+  Streaming configuration for >30s transcriptions.
+</ParamField>
+
+<ParamField path="encoder_stacking" type="int" default="1">
+  Number of audio embedding frames to stack before decoder.
+</ParamField>
+
+<ParamField path="frozen_encoder" type="int" default="1">
+  Encoder freeze setting:
+  - `0`: Frozen
+  - `1`: Unfrozen
+  - `N > 1`: Unfrozen every N calls
+</ParamField>
+
+<ParamField path="lang_embeddings_p" type="float" default="0.0">
+  Probability of dropping language embeddings during training.
+</ParamField>
+
+<ParamField path="language_column_name" type="str" default="lang">
+  Column name containing language information in batch metadata.
+</ParamField>
+
+<ParamField path="context_text_only" type="bool" default="False">
+  Adapts model input syntax for text-only context (instead of audio+text).
+</ParamField>
+
+<ParamField path="n_special_tokens" type="int" default="0">
+  Number of additional special tokens to allocate in vocab-embedding mapping.
+</ParamField>
+
+<ParamField path="model_type" type="ModelType" default="ModelType.LLM_ASR">
+  High-level model type:
+  - `ModelType.LLM_ASR`: Standard ASR
+  - `ModelType.LLM_ASR_LID`: ASR with language ID
+  - `ModelType.ZERO_SHOT`: Zero-shot with context
+</ParamField>
+
+<ParamField path="n_context_examples" type="int" default="0">
+  Number of context examples for zero-shot model.
+</ParamField>
+
+### Vocabulary Parameters
+
+<ParamField path="unk_idx" type="int" default="3">
+  Index of UNK token in vocabulary.
+</ParamField>
+
+<ParamField path="bos_idx" type="int" default="0">
+  Index of BOS (beginning of sequence) token.
+</ParamField>
+
+<ParamField path="eos_idx" type="int" default="2">
+  Index of EOS (end of sequence) token.
+</ParamField>
+
+<ParamField path="pad_idx" type="int" default="1">
+  Index of PAD token. Must align with Llama's `pad_idx`.
+</ParamField>
+
+### Example
+
+```python
+from fairseq2.runtime.config_registry import get_config
+from omnilingual_asr.models.wav2vec2_llama.config import Wav2Vec2LlamaConfig
+
+# Load predefined config
+config = get_config(Wav2Vec2LlamaConfig, "7b")
+
+print(f"Model type: {config.model_type}")
+print(f"Encoder stacking: {config.encoder_stacking}")
+print(f"Lang embeddings p: {config.lang_embeddings_p}")
+print(f"Vocab size: {config.llama_config.vocab_size}")
+```
+
+## Wav2Vec2LlamaBeamSearchConfig
+
+Configuration for beam search decoding.
+
+### Parameters
+
+<ParamField path="nbest" type="int" default="5">
+  Size of the beam (number of hypotheses to maintain).
+</ParamField>
+
+<ParamField path="length_norm" type="bool" default="False">
+  Whether to apply length normalization when computing hypothesis scores.
+</ParamField>
+
+<ParamField path="compression_window" type="int" default="100">
+  Window size for early stopping detection. If the last N tokens compress at a ratio greater than `compression_threshold`, decoding stops.
+</ParamField>
+
+<ParamField path="compression_threshold" type="float" default="4.0">
+  Compression ratio threshold for early stopping (used with `compression_window`).
+</ParamField>
+
+### Example
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.config import Wav2Vec2LlamaBeamSearchConfig
+from omnilingual_asr.models.inference import ASRInferencePipeline
+
+# Custom beam search config
+beam_config = Wav2Vec2LlamaBeamSearchConfig(
+    nbest=10,  # Larger beam
+    length_norm=True,  # Enable length normalization
+    compression_window=50,
+    compression_threshold=3.0
+)
+
+# Use with pipeline
+pipeline = ASRInferencePipeline(
+    "omniASR_LLM_7B",
+    beam_search_config=beam_config
+)
+```
+
+### Early Stopping
+
+Early stopping prevents infinite loops on bad audio:
+
+1. During decoding, track the last `compression_window` tokens
+2. Compute compression ratio (e.g., using zlib)
+3. If ratio > `compression_threshold`, stop decoding
+
+Example: Repetitive output like "the the the the..." compresses well and triggers early stopping.
+
+## Wav2Vec2LlamaStreamingConfig
+
+Configuration for streaming mode (unlimited audio length).
+
+### Parameters
+
+<ParamField path="is_streaming" type="bool" default="False">
+  Enable streaming mode for >30s audio.
+</ParamField>
+
+<ParamField path="segment_secs" type="float" default="15.0">
+  Duration of each audio segment in seconds.
+</ParamField>
+
+<ParamField path="sample_rate" type="int" default="16000">
+  Audio sample rate in Hz.
+</ParamField>
+
+<ParamField path="n_context_segments" type="int" default="1">
+  Number of context segments to maintain (in addition to current segment).
+</ParamField>
+
+<ParamField path="text_tokenizer" type="str" default="">
+  Name of text tokenizer for streaming mode.
+</ParamField>
+
+<ParamField path="min_audio_ms" type="int" default="25">
+  Minimum audio length in milliseconds. Shorter segments are dropped.
+</ParamField>
+
+### Example
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.config import Wav2Vec2LlamaStreamingConfig
+
+# Streaming config
+streaming_config = Wav2Vec2LlamaStreamingConfig(
+    is_streaming=True,
+    segment_secs=20.0,  # 20-second segments
+    sample_rate=16000,
+    n_context_segments=2,  # Keep 2 previous segments as context
+    text_tokenizer="omniASR_tokenizer_v2",
+    min_audio_ms=50  # Drop segments <50ms
+)
+
+# Note: Streaming models are loaded with pre-configured streaming settings
+# This is typically not set manually
+from fairseq2.models.hub import load_model
+model = load_model("omniASR_LLM_7B_Unlimited")
+print(model.streaming_config.is_streaming)  # True
+```
+
+### Streaming Processing
+
+1. **Segmentation**: Audio is split into `segment_secs` chunks
+2. **Context**: Previous `n_context_segments` are maintained for continuity
+3. **Transcription**: Each segment is transcribed with context
+4. **Concatenation**: Segment transcriptions are concatenated into final output
+
+## Wav2Vec2LlamaSpecialTokens
+
+Special token indices allocated beyond vocabulary size.
+
+### Properties
+
+All special tokens are allocated as `vocab_size + offset`:
+
+#### Default/LID Syntax
+
+<ResponseField name="lid_marker" type="int">
+  Language ID marker token: `vocab_size + 0`
+</ResponseField>
+
+#### Streaming Syntax
+
+<ResponseField name="streaming_lang" type="int">
+  Streaming language token: `vocab_size + 0`
+</ResponseField>
+
+<ResponseField name="last_segment" type="int">
+  Last segment marker: `vocab_size + 1`
+</ResponseField>
+
+<ResponseField name="regular_segment" type="int">
+  Regular segment marker: `vocab_size + 2`
+</ResponseField>
+
+#### Context Syntax (Zero-Shot)
+
+<ResponseField name="context_start" type="int">
+  Context start marker: `vocab_size + 0`
+</ResponseField>
+
+<ResponseField name="context_end" type="int">
+  Context end marker: `vocab_size + 1`
+</ResponseField>
+
+<ResponseField name="context_example_start" type="int">
+  Context example start marker: `vocab_size + 2`
+</ResponseField>
+
+<ResponseField name="context_example_end" type="int">
+  Context example end marker: `vocab_size + 3`
+</ResponseField>
+
+<ResponseField name="context_bos" type="int">
+  Context BOS token: `vocab_size + 4`
+</ResponseField>
+
+<ResponseField name="context_eos" type="int">
+  Context EOS token: `vocab_size + 5`
+</ResponseField>
+
+### Example
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.config import Wav2Vec2LlamaSpecialTokens
+
+vocab_size = 10000
+special_tokens = Wav2Vec2LlamaSpecialTokens(vocab_size)
+
+print(f"LID marker: {special_tokens.lid_marker}")  # 10000
+print(f"Context start: {special_tokens.context_start}")  # 10000
+print(f"Context BOS: {special_tokens.context_bos}")  # 10004
+```
+
+## ModelType Enum
+
+Defines the high-level model variant.
+
+```python
+from enum import Enum
+
+class ModelType(Enum):
+    LLM_ASR = 1      # Standard encoder-decoder ASR
+    LLM_ASR_LID = 2  # ASR with language identification
+    ZERO_SHOT = 3    # Zero-shot with context examples
+```
+
+### Usage
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.config import ModelType
+from fairseq2.models.hub import load_model
+
+model = load_model("omniASR_LLM_7B")
+if model.model_type == ModelType.LLM_ASR_LID:
+    print("Model supports language conditioning")
+elif model.model_type == ModelType.ZERO_SHOT:
+    print("Model requires context examples")
+```
+
+## Predefined Configurations
+
+Omnilingual ASR provides predefined configurations:
+
+| Config Name | Size | Type | Special Features |
+|-------------|------|------|------------------|
+| `300m` | 300M | LLM_ASR_LID | Language conditioning |
+| `1b` | 1B | LLM_ASR_LID | Language conditioning |
+| `3b` | 3B | LLM_ASR_LID | Language conditioning |
+| `7b` | 7B | LLM_ASR_LID | Language conditioning |
+| `7b_zs` | 7B | ZERO_SHOT | Zero-shot, 10 context examples |
+| `7b_unlimited_v2` | 7B | LLM_ASR_LID | Streaming enabled |
+
+### Loading Configs
+
+```python
+from fairseq2.runtime.config_registry import get_config
+from omnilingual_asr.models.wav2vec2_llama.config import Wav2Vec2LlamaConfig
+
+# Load 7B config
+config_7b = get_config(Wav2Vec2LlamaConfig, "7b")
+
+# Load zero-shot config
+config_zs = get_config(Wav2Vec2LlamaConfig, "7b_zs")
+print(f"Context examples: {config_zs.n_context_examples}")  # 10
+
+# Load streaming config  
+config_stream = get_config(Wav2Vec2LlamaConfig, "7b_unlimited_v2")
+print(f"Streaming: {config_stream.streaming_config.is_streaming}")  # True
+```
+
+## Configuration Validation
+
+Configs are validated in `__post_init__`:
+
+```python
+# Vocabulary size must match
+assert wav2vec2_asr_config.target_vocab_size == llama_config.vocab_size
+
+# PAD index must match
+assert pad_idx == llama_config.pad_idx
+```
+
+## Complete Example
+
+```python
+from fairseq2.models.llama import LLaMAConfig
+from fairseq2.models.wav2vec2.asr import Wav2Vec2AsrConfig
+from omnilingual_asr.models.wav2vec2_llama.config import (
+    Wav2Vec2LlamaConfig,
+    Wav2Vec2LlamaBeamSearchConfig,
+    Wav2Vec2LlamaStreamingConfig,
+    ModelType
+)
+
+# Create custom config
+wav2vec2_config = Wav2Vec2AsrConfig(
+    target_vocab_size=10000,
+    # ... other wav2vec2 settings
+)
+
+llama_config = LLaMAConfig(
+    model_dim=4096,
+    vocab_size=10000,
+    num_layers=12,
+    num_attn_heads=32,
+    # ... other llama settings
+)
+
+beam_search_config = Wav2Vec2LlamaBeamSearchConfig(
+    nbest=5,
+    length_norm=True
+)
+
+streaming_config = Wav2Vec2LlamaStreamingConfig(
+    is_streaming=False
+)
+
+config = Wav2Vec2LlamaConfig(
+    wav2vec2_asr_config=wav2vec2_config,
+    llama_config=llama_config,
+    beam_search_config=beam_search_config,
+    streaming_config=streaming_config,
+    model_type=ModelType.LLM_ASR_LID,
+    encoder_stacking=1,
+    lang_embeddings_p=0.5,
+    n_special_tokens=1
+)
+
+print(f"Config created: {config.model_type}")
+```
+
+## Source Reference
+
+See implementation at `src/omnilingual_asr/models/wav2vec2_llama/config.py`

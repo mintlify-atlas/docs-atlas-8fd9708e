@@ -1,0 +1,530 @@
+---
+title: 'Model Specifications'
+description: 'Comprehensive comparison of all Omnilingual ASR models'
+---
+
+## Complete Model Comparison
+
+Omnilingual ASR offers 27 models across four families: W2V (self-supervised), CTC (parallel ASR), LLM (autoregressive ASR), and Zero-Shot models.
+
+<Note>
+All VRAM and speed metrics measured on **A100 GPU** with **BF16 precision**, batch size 1, and 30-second audio (unless noted otherwise).
+</Note>
+
+## Model Families Overview
+
+<CardGroup cols={2}>
+  <Card title="W2V Models" icon="wave-square">
+    **Self-Supervised Learning (SSL)**
+    
+    Pre-trained audio encoders producing contextualized embeddings. Useful as starting points for custom architectures.
+    
+    - 4 sizes: 300M, 1B, 3B, 7B
+    - No direct transcription
+    - Foundation for CTC/LLM models
+  </Card>
+  
+  <Card title="CTC Models" icon="forward-fast">
+    **Parallel ASR**
+    
+    High-speed speech recognition with parallel generation. Ideal for production deployments requiring throughput.
+    
+    - 4 sizes × 2 versions = 8 models
+    - 16x-96x faster than real-time
+    - No language conditioning
+  </Card>
+  
+  <Card title="LLM Models" icon="brain">
+    **Autoregressive ASR**
+    
+    State-of-the-art accuracy with language conditioning. Standard and Unlimited length variants.
+    
+    - 4 sizes × 3 variants = 12 models
+    - Optional language conditioning
+    - Unlimited length support (v2)
+  </Card>
+  
+  <Card title="Zero-Shot" icon="wand-magic-sparkles">
+    **In-Context Learning**
+    
+    Transcribe unseen languages using 1-10 audio-text example pairs.
+    
+    - 1 model (7B)
+    - Requires context examples
+    - Ideal for low-resource languages
+  </Card>
+</CardGroup>
+
+## Complete Specifications Table
+
+### W2V Models (Self-Supervised)
+
+| Model | Parameters | Download | Features | Embedding Dim |
+|-------|------------|----------|----------|---------------|
+| [omniASR_W2V_300M](https://dl.fbaipublicfiles.com/mms/omniASR-W2V-300M.pt) | 317,390,592 | 1.2 GiB | SSL | 1024 |
+| [omniASR_W2V_1B](https://dl.fbaipublicfiles.com/mms/omniASR-W2V-1B.pt) | 965,514,752 | 3.6 GiB | SSL | 1280 |
+| [omniASR_W2V_3B](https://dl.fbaipublicfiles.com/mms/omniASR-W2V-3B.pt) | 3,064,124,672 | 12.0 GiB | SSL | 2048 |
+| [omniASR_W2V_7B](https://dl.fbaipublicfiles.com/mms/omniASR-W2V-7B.pt) | 6,488,487,168 | 25.0 GiB | SSL | 2048 |
+
+<Accordion title="W2V Model Details">
+  **Input**: Raw audio waveform (16kHz)
+  
+  **Output**: Contextualized audio embeddings
+  - 300M: 1024-dimensional vectors
+  - 1B: 1280-dimensional vectors
+  - 3B/7B: 2048-dimensional vectors
+  
+  **Use Case**: Building custom architectures, transfer learning, feature extraction
+  
+  **Not Recommended For**: Direct transcription (use CTC or LLM models instead)
+</Accordion>
+
+### CTC Models (Parallel ASR)
+
+#### Version 1 Models
+
+| Model | Parameters | Download | VRAM | RTF | Speed | Vocab |
+|-------|------------|----------|------|-----|-------|-------|
+| [omniASR_CTC_300M](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-300M.pt) | 325,494,996 | 1.3 GiB | ~2 GiB | 0.001 | 96x | 9,812 |
+| [omniASR_CTC_1B](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-1B.pt) | 975,065,300 | 3.7 GiB | ~3 GiB | 0.002 | 48x | 9,812 |
+| [omniASR_CTC_3B](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-3B.pt) | 3,080,423,636 | 12.0 GiB | ~8 GiB | 0.003 | 32x | 9,812 |
+| [omniASR_CTC_7B](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-7B.pt) | 6,504,786,132 | 25.0 GiB | ~15 GiB | 0.006 | 16x | 9,812 |
+
+#### Version 2 Models (Improved CER)
+
+| Model | Parameters | Download | VRAM | RTF | Speed | Vocab |
+|-------|------------|----------|------|-----|-------|-------|
+| [omniASR_CTC_300M_v2](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-300M-v2.pt) | 325,494,996 | 1.3 GiB | ~2 GiB | 0.001 | 96x | 10,288 |
+| [omniASR_CTC_1B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-1B-v2.pt) | 975,065,300 | 3.7 GiB | ~3 GiB | 0.002 | 48x | 10,288 |
+| [omniASR_CTC_3B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-3B-v2.pt) | 3,080,423,636 | 12.0 GiB | ~8 GiB | 0.003 | 32x | 10,288 |
+| [omniASR_CTC_7B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-CTC-7B-v2.pt) | 6,504,786,132 | 25.0 GiB | ~15 GiB | 0.006 | 16x | 10,288 |
+
+<Accordion title="CTC Model Details">
+  **Features**: Parallel generation, non-autoregressive decoding
+  
+  **Tokenizers**:
+  - v1 models: `omniASR_tokenizer_v1` (9,812 tokens)
+  - v2 models: `omniASR_tokenizer_written_v2` (10,288 tokens)
+  
+  **Max Audio Length**: 40 seconds
+  
+  **Language Conditioning**: Not supported (parameter ignored)
+  
+  **Best For**: High-throughput production, on-device deployment, batch processing
+  
+  **v2 Improvements**: Better character error rates (CER), expanded vocabulary
+</Accordion>
+
+### LLM Models (Autoregressive ASR)
+
+#### Standard LLM - Version 1
+
+| Model | Parameters | Download | VRAM | RTF | Vocab | Max Audio |
+|-------|------------|----------|------|-----|-------|----------|
+| [omniASR_LLM_300M](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-300M.pt) | 1,627,603,584 | 6.1 GiB | ~5 GiB | 0.090 | 9,812 | 40s |
+| [omniASR_LLM_1B](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-1B.pt) | 2,275,710,592 | 8.5 GiB | ~6 GiB | 0.091 | 9,812 | 40s |
+| [omniASR_LLM_3B](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-3B.pt) | 4,376,679,040 | 17.0 GiB | ~10 GiB | 0.093 | 9,812 | 40s |
+| [omniASR_LLM_7B](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-7B.pt) | 7,801,041,536 | 30.0 GiB | ~17 GiB | 0.092 | 9,818 | 40s |
+
+#### Standard LLM - Version 2 (Improved CER)
+
+| Model | Parameters | Download | VRAM | RTF | Vocab | Max Audio |
+|-------|------------|----------|------|-----|-------|----------|
+| [omniASR_LLM_300M_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-300M-v2.pt) | 1,627,603,584 | 6.1 GiB | ~5 GiB | 0.090 | 10,288 | 40s |
+| [omniASR_LLM_1B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-1B-v2.pt) | 2,275,710,592 | 8.5 GiB | ~6 GiB | 0.091 | 10,288 | 40s |
+| [omniASR_LLM_3B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-3B-v2.pt) | 4,376,679,040 | 17.0 GiB | ~10 GiB | 0.093 | 10,288 | 40s |
+| [omniASR_LLM_7B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-7B-v2.pt) | 7,801,041,536 | 30.0 GiB | ~17 GiB | 0.092 | 10,288 | 40s |
+
+#### Unlimited Length LLM - Version 2
+
+| Model | Parameters | Download | VRAM | RTF (30s) | RTF (15min) | Max Audio |
+|-------|------------|----------|------|-----------|-------------|----------|
+| [omniASR_LLM_Unlimited_300M_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-Unlimited-300M-v2.pt) | 1,627,603,584 | 6.1 GiB | ~5 GiB | 0.092 | 0.206 | Unlimited |
+| [omniASR_LLM_Unlimited_1B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-Unlimited-1B-v2.pt) | 2,275,710,592 | 8.5 GiB | ~6 GiB | 0.097 | 0.207 | Unlimited |
+| [omniASR_LLM_Unlimited_3B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-Unlimited-3B-v2.pt) | 4,376,679,040 | 17.0 GiB | ~10 GiB | 0.095 | 0.208 | Unlimited |
+| [omniASR_LLM_Unlimited_7B_v2](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-Unlimited-7B-v2.pt) | 7,801,041,536 | 30.0 GiB | ~17 GiB | 0.097 | 0.208 | Unlimited |
+
+<Accordion title="LLM Model Details">
+  **Features**: 
+  - Optional language conditioning (80/20 training split with/without)
+  - Autoregressive beam search decoding
+  - State-of-the-art accuracy
+  
+  **Tokenizers**:
+  - v1 models (300M/1B/3B): `omniASR_tokenizer_v1`
+  - v1 model (7B): `omniASR_tokenizer_v1_variant7`
+  - v2 models: `omniASR_tokenizer_written_v2`
+  
+  **Unlimited Length Models**:
+  - Segment size: 15 seconds
+  - Context window: 1 previous segment
+  - Accuracy comparable to standard LLM models
+  - Fine-tuning not currently supported
+  - Can be extended for streaming applications
+  
+  **Best For**: 
+  - Standard: Maximum accuracy, known languages, audio under 40s
+  - Unlimited: Long-form content (podcasts, lectures, meetings)
+</Accordion>
+
+### Zero-Shot Model
+
+| Model | Parameters | Download | VRAM | RTF | Vocab | Context Required |
+|-------|------------|----------|------|-----|-------|------------------|
+| [omniASR_LLM_7B_ZS](https://dl.fbaipublicfiles.com/mms/omniASR-LLM-7B-ZS.pt) | 7,810,900,608 | 30.0 GiB | ~20 GiB | 0.194 | 9,812 | 1-10 examples |
+
+<Accordion title="Zero-Shot Model Details">
+  **Features**: In-context learning with audio-text example pairs
+  
+  **Tokenizer**: `omniASR_tokenizer_v1`
+  
+  **Context Examples**: 
+  - Minimum: 1 example (repeated to 10)
+  - Maximum: 10 examples
+  - Recommended: 5-10 diverse examples
+  - Max length per example: 30 seconds
+  
+  **Target Audio**: Up to 60 seconds (40s recommended)
+  
+  **Use Case**: Unseen languages, low-resource scenarios, domain adaptation
+  
+  **Limitations**: Higher VRAM usage, slower inference, requires context
+</Accordion>
+
+## Tokenizers
+
+| Tokenizer | Size | Used By | Vocab Size |
+|-----------|------|---------|------------|
+| [omniASR_tokenizer_v1](https://dl.fbaipublicfiles.com/mms/omniASR_tokenizer.model) | 100 KiB | W2V, CTC v1, LLM v1 (300M/1B/3B), ZS | 9,812 |
+| [omniASR_tokenizer_v1_variant7](https://dl.fbaipublicfiles.com/mms/omniASR_tokenizer_v7.model) | 100 KiB | LLM v1 (7B only) | 9,818 |
+| [omniASR_tokenizer_written_v2](https://dl.fbaipublicfiles.com/mms/omniASR_tokenizer_written_v2.model) | 100 KiB | CTC v2, LLM v2, LLM Unlimited v2 | 10,288 |
+
+## Performance Metrics
+
+### Speed Comparison (Real-Time Factor)
+
+<Note>
+**RTF (Real-Time Factor)**: Time to process 1 second of audio. Lower is faster.
+- RTF = 0.001: 1000x faster than real-time (1s audio in 0.001s)
+- RTF = 1.0: Real-time processing (1s audio in 1s)
+- RTF = 0.092: ~11x faster than real-time (1s audio in 0.092s)
+</Note>
+
+| Model Family | RTF Range | Speed vs Real-Time | Relative to LLM 7B |
+|--------------|-----------|-------------------|--------------------|
+| **CTC 300M** | 0.001 | 1000x faster | 96x faster |
+| **CTC 1B** | 0.002 | 500x faster | 48x faster |
+| **CTC 3B** | 0.003 | 333x faster | 32x faster |
+| **CTC 7B** | 0.006 | 167x faster | 16x faster |
+| **LLM (all)** | 0.090-0.093 | ~11x faster | 1x (baseline) |
+| **LLM Unlimited (30s)** | 0.092-0.097 | ~11x faster | ~1x |
+| **LLM Unlimited (15min)** | 0.206-0.208 | ~5x faster | ~0.5x |
+| **Zero-Shot** | 0.194 | ~5x faster | ~0.5x |
+
+### VRAM Requirements (BF16)
+
+| Size | CTC | LLM Standard | LLM Unlimited | Zero-Shot |
+|------|-----|--------------|---------------|----------|
+| **300M** | 2 GiB | 5 GiB | 5 GiB | - |
+| **1B** | 3 GiB | 6 GiB | 6 GiB | - |
+| **3B** | 8 GiB | 10 GiB | 10 GiB | - |
+| **7B** | 15 GiB | 17 GiB | 17 GiB | 20 GiB |
+
+<Warning>
+**VRAM Scaling**: These values are for batch_size=1 with 30-second audio. Larger batches and longer audio will require proportionally more memory.
+</Warning>
+
+### Accuracy Performance
+
+The 7B LLM model achieves:
+- **Character Error Rate (CER) < 10%** for 78% of 1,600+ languages
+- State-of-the-art multilingual ASR performance
+- Improved results with language conditioning
+
+See [per-language CER results](https://github.com/facebookresearch/omnilingual-asr/blob/main/per_language_results_table_7B_llm_asr.csv) for detailed metrics.
+
+## Model Selection Guide
+
+### By Use Case
+
+<Tabs>
+  <Tab title="Production Deployment">
+    **High Throughput**: `omniASR_CTC_7B_v2`
+    - 16x faster than real-time
+    - Best CTC accuracy
+    - Parallel processing
+    
+    **Balanced**: `omniASR_LLM_1B_v2`
+    - Good accuracy
+    - Moderate VRAM (6 GiB)
+    - Language conditioning
+    
+    **Maximum Accuracy**: `omniASR_LLM_7B_v2`
+    - State-of-the-art CER
+    - Full language support
+    - Requires 17 GiB VRAM
+  </Tab>
+  
+  <Tab title="Edge / Mobile">
+    **Smallest**: `omniASR_CTC_300M_v2`
+    - Only 1.3 GiB download
+    - 2 GiB VRAM
+    - 96x real-time speed
+    
+    **Better Accuracy**: `omniASR_CTC_1B_v2`
+    - 3.7 GiB download
+    - 3 GiB VRAM
+    - Still 48x faster
+  </Tab>
+  
+  <Tab title="Long-Form Content">
+    **Podcasts/Lectures**: `omniASR_LLM_Unlimited_7B_v2`
+    - No audio length limit
+    - Automatic segmentation
+    - Best accuracy
+    
+    **Resource-Constrained**: `omniASR_LLM_Unlimited_1B_v2`
+    - Unlimited length
+    - Only 6 GiB VRAM
+    - Good accuracy
+  </Tab>
+  
+  <Tab title="New Languages">
+    **Zero-Shot**: `omniASR_LLM_7B_ZS`
+    - Requires 1-10 example pairs
+    - No fine-tuning needed
+    - 20 GiB VRAM
+    
+    **Alternative**: Fine-tune `omniASR_LLM_7B_v2`
+    - Requires training infrastructure
+    - Better long-term accuracy
+    - More complex setup
+  </Tab>
+</Tabs>
+
+### By Available Resources
+
+| VRAM Available | Recommended Model | Use Case |
+|----------------|-------------------|----------|
+| **< 4 GiB** | `omniASR_CTC_300M_v2` | Edge deployment |
+| **4-8 GiB** | `omniASR_CTC_1B_v2` or `omniASR_LLM_300M_v2` | Consumer GPUs |
+| **8-12 GiB** | `omniASR_CTC_3B_v2` or `omniASR_LLM_1B_v2` | Mid-range production |
+| **12-16 GiB** | `omniASR_LLM_3B_v2` | High-quality production |
+| **16-20 GiB** | `omniASR_LLM_7B_v2` or `omniASR_LLM_Unlimited_7B_v2` | Maximum accuracy |
+| **20+ GiB** | `omniASR_LLM_7B_ZS` | Zero-shot learning |
+
+## Model Download & Storage
+
+### Automatic Download
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Models automatically downloaded on first use
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_v2")
+```
+
+### Storage Location
+
+All models and tokenizers are cached in:
+```
+~/.cache/fairseq2/assets/
+```
+
+See [fairseq2 asset store documentation](https://facebookresearch.github.io/fairseq2/stable/basics/assets.html#the-asset-store-system) for details.
+
+### Manual Download
+
+Direct download links provided in the specification tables above. Example:
+
+```bash
+# Download model
+wget https://dl.fbaipublicfiles.com/mms/omniASR-LLM-7B-v2.pt
+
+# Download tokenizer
+wget https://dl.fbaipublicfiles.com/mms/omniASR_tokenizer_written_v2.model
+```
+
+## Version History
+
+### December 2025 Update (v2 Models)
+
+<Accordion title="v2 Release Changes">
+  **New Models**:
+  - CTC v2: Improved character error rates
+  - LLM v2: Better accuracy across all sizes
+  - LLM Unlimited v2: Support for unlimited audio length
+  
+  **Key Improvements**:
+  - Expanded vocabulary (10,288 tokens vs 9,812)
+  - New tokenizer: `omniASR_tokenizer_written_v2`
+  - Updated training data and procedures
+  - Segmented processing for long audio (Unlimited variants)
+  
+  **Limitations**:
+  - Unlimited models: Fine-tuning recipes not yet supported
+  - Unlimited models: Not described in original research paper
+</Accordion>
+
+### Original Release
+
+- W2V models (4 sizes)
+- CTC v1 models (4 sizes)
+- LLM v1 models (4 sizes)
+- Zero-Shot model (1 model)
+
+## Technical Details
+
+### Architecture Components
+
+<Tabs>
+  <Tab title="Wav2Vec2 Encoder">
+    **Feature Extractor**:
+    - CNN-based architecture
+    - Downsampling: ~320x (16kHz → 50Hz)
+    - Output: Frame-level features
+    
+    **Transformer Encoder**:
+    - Sizes: 12/24/36/48 layers (300M/1B/3B/7B)
+    - Dimensions: 1024/1280/2048/2048
+    - Self-attention with positional encoding
+    - Output: Contextualized audio embeddings
+  </Tab>
+  
+  <Tab title="CTC Projection">
+    **Linear Projection**:
+    - Input: Audio embeddings (1024/1280/2048-dim)
+    - Output: Vocabulary logits (9,812 or 10,288-dim)
+    - No hidden layers (direct projection)
+    
+    **CTC Decoding**:
+    - Parallel prediction over all frames
+    - Blank token for alignment
+    - Duplicate removal
+    - Greedy argmax selection
+  </Tab>
+  
+  <Tab title="Llama Decoder">
+    **Projection Layer**:
+    - Maps audio embeddings to 4096-dim Llama space
+    
+    **Llama Transformer**:
+    - Decoder-only architecture
+    - 4096-dimensional hidden states
+    - Autoregressive generation
+    - Beam search decoding
+    
+    **Final Projection**:
+    - 4096-dim → vocab size
+    - Produces token probabilities
+  </Tab>
+  
+  <Tab title="Zero-Shot Context">
+    **Context Processing**:
+    - 10 audio-text pairs (fixed)
+    - Each audio → Wav2Vec2 → embeddings
+    - Each text → text embeddings
+    - Interleaved with special tokens
+    
+    **Decoder Input**:
+    - Context embeddings (10 pairs)
+    - Target audio embeddings
+    - Autoregressive generation conditioned on context
+  </Tab>
+</Tabs>
+
+### Input Preprocessing
+
+All models use the same preprocessing pipeline:
+
+1. **Audio Decoding**: WAV, FLAC, MP3, etc. → raw waveform
+2. **Resampling**: Any sample rate → 16kHz
+3. **Channel Mixing**: Stereo/multi-channel → mono
+4. **Normalization**: Amplitude normalization
+5. **Length Validation**: Check max length constraints
+
+```python
+# From pipeline.py preprocessing
+- Decode audio (if file/bytes)
+- Resample to 16kHz
+- Convert to mono
+- Normalize amplitude
+- Validate max length (40s for CTC/LLM, 60s for ZS)
+```
+
+## Common Limitations
+
+<AccordionGroup>
+  <Accordion title="Audio Length Constraints">
+    - **CTC/LLM Standard**: 40 seconds maximum
+    - **LLM Unlimited**: No limit (processes in 15s segments)
+    - **Zero-Shot**: 60 seconds max (30s recommended for context)
+    
+    **Workaround**: Split longer audio or use Unlimited models
+  </Accordion>
+  
+  <Accordion title="No Punctuation or Capitalization">
+    Models output spoken-form text without punctuation or capitalization.
+    
+    **Workaround**: Use third-party punctuation restoration libraries like [deepmultilingualpunctuation](https://github.com/oliverguhr/deepmultilingualpunctuation)
+  </Accordion>
+  
+  <Accordion title="Limited Script Support">
+    While supporting 1,600+ languages, some rare scripts may have limited training data.
+    
+    **Workaround**: Use zero-shot model with examples in target script
+  </Accordion>
+  
+  <Accordion title="No Real-Time Streaming (Current)">
+    Unlimited models support segmented processing but the inference pipeline doesn't expose streaming API.
+    
+    **Future**: Underlying checkpoints can be extended for streaming applications
+  </Accordion>
+</AccordionGroup>
+
+## Quick Reference
+
+### Model Naming Convention
+
+```
+omniASR_{FAMILY}_{SIZE}_{VARIANT}
+
+FAMILY: W2V | CTC | LLM | LLM_Unlimited
+SIZE:   300M | 1B | 3B | 7B
+VARIANT: (none) | v2 | ZS
+
+Examples:
+- omniASR_CTC_3B_v2
+- omniASR_LLM_Unlimited_7B_v2
+- omniASR_LLM_7B_ZS
+```
+
+### Key Metrics Summary
+
+| Metric | CTC 300M | CTC 7B | LLM 1B | LLM 7B | LLM Unl. 7B | ZS 7B |
+|--------|----------|--------|--------|--------|-------------|-------|
+| **Params** | 325M | 6.5B | 2.3B | 7.8B | 7.8B | 7.8B |
+| **VRAM** | 2 GiB | 15 GiB | 6 GiB | 17 GiB | 17 GiB | 20 GiB |
+| **Speed** | 96x | 16x | 1x | 1x | 1x (0.5x long) | 0.5x |
+| **Max Audio** | 40s | 40s | 40s | 40s | Unlimited | 60s |
+| **Lang Cond.** | No | No | Yes | Yes | Yes | Via context |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="CTC Models" icon="forward-fast" href="/models/ctc-models">
+    Detailed guide to parallel ASR models
+  </Card>
+  
+  <Card title="LLM Models" icon="brain" href="/models/llm-models">
+    Autoregressive models with language conditioning
+  </Card>
+  
+  <Card title="Zero-Shot" icon="wand-magic-sparkles" href="/models/zero-shot">
+    In-context learning for new languages
+  </Card>
+  
+  <Card title="Inference Guide" icon="rocket" href="/inference/overview">
+    Start transcribing with our models
+  </Card>
+</CardGroup>

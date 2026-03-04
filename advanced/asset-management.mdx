@@ -1,0 +1,264 @@
+---
+title: Asset Management
+description: Understanding the fairseq2 asset system for models, tokenizers, and datasets
+---
+
+## Overview
+
+Omnilingual ASR uses fairseq2's asset management system to organize and load models, tokenizers, and datasets. Assets are defined in YAML files called "asset cards" that specify how to locate and configure each component.
+
+## Asset Card Structure
+
+Asset cards are YAML files that define how fairseq2 should load and configure models, tokenizers, and datasets. Multiple assets can be defined in a single file by separating them with `---`.
+
+### Model Asset Cards
+
+Model cards define the architecture, checkpoint location, and associated tokenizer.
+
+<CodeGroup>
+```yaml Model Card Example
+name: omniASR_CTC_300M_v2
+model_family: wav2vec2_asr
+model_arch: 300m_v2
+checkpoint: https://dl.fbaipublicfiles.com/mms/omniASR-CTC-300M-v2.pt
+tokenizer_ref: omniASR_tokenizer_written_v2
+```
+
+```yaml LLM Model Card
+name: omniASR_LLM_1B_v2
+model_family: wav2vec2_llama
+model_arch: 1b_v2
+checkpoint: https://dl.fbaipublicfiles.com/mms/omniASR-LLM-1B-v2.pt
+tokenizer_ref: omniASR_tokenizer_written_v2
+```
+</CodeGroup>
+
+### Field Reference
+
+<AccordionGroup>
+<Accordion title="name">
+Unique identifier used to load the asset via `load_model("omniASR_CTC_300M_v2")`.
+
+**Type:** String  
+**Required:** Yes  
+**Example:** `omniASR_CTC_300M_v2`
+</Accordion>
+
+<Accordion title="model_family">
+Maps to the model implementation class. Determines which model architecture will be instantiated.
+
+**Type:** String  
+**Required:** Yes  
+**Options:**
+- `wav2vec2_asr` - CTC-based ASR models
+- `wav2vec2_llama` - LLM-based decoder models
+- `wav2vec2_ssl` - Self-supervised learning models
+
+**Example:** `wav2vec2_asr`
+</Accordion>
+
+<Accordion title="model_arch">
+Specific configuration variant for the model family. References architecture configs defined in the codebase.
+
+**Type:** String  
+**Required:** Yes  
+**Examples:**
+- For `wav2vec2_asr`: `300m_v2`, `1b_v2`, `3b_v2`, `7b_v2`
+- For `wav2vec2_llama`: `300m_v2`, `1b_v2`, `3b_unlimited_v2`
+
+**Location:** See `/src/omnilingual_asr/models/wav2vec2_*/config.py`
+</Accordion>
+
+<Accordion title="checkpoint">
+URI pointing to the model weights. Supports multiple formats:
+
+**Type:** String  
+**Required:** Yes  
+**Formats:**
+- **HTTP URL:** `https://dl.fbaipublicfiles.com/mms/model.pt`
+- **Local path:** `$HOME/.cache/models/model.pt`
+- **HuggingFace:** `hg://username/model-name` (for `.safetensors` format)
+
+**Example:** `https://dl.fbaipublicfiles.com/mms/omniASR-CTC-300M-v2.pt`
+</Accordion>
+
+<Accordion title="tokenizer_ref">
+References another asset card by name to load the associated tokenizer.
+
+**Type:** String  
+**Required:** Yes (for ASR models)  
+**Example:** `omniASR_tokenizer_written_v2`
+</Accordion>
+</AccordionGroup>
+
+## Tokenizer Asset Cards
+
+Tokenizers are defined separately and referenced by models.
+
+```yaml
+name: omniASR_tokenizer_written_v2
+tokenizer_family: char_tokenizer
+tokenizer: https://dl.fbaipublicfiles.com/mms/omniASR_tokenizer_written_v2.model
+```
+
+### Tokenizer Fields
+
+- **name**: Unique identifier referenced by `tokenizer_ref` in model cards
+- **tokenizer_family**: Implementation type (e.g., `char_tokenizer`)
+- **tokenizer**: URI to the tokenizer model file
+
+## Dataset Asset Cards
+
+Dataset cards specify the location and configuration for training/evaluation data.
+
+```yaml
+name: example_dataset
+dataset_family: mixture_parquet_asr_dataset
+dataset_config:
+  data: /path/to/your/dataset/version=0
+tokenizer_ref: omniASR_tokenizer_v1
+```
+
+### Dataset Fields
+
+- **name**: Unique identifier for loading the dataset
+- **dataset_family**: Dataset implementation type
+- **dataset_config**: Configuration parameters (varies by dataset family)
+  - **data**: Path to dataset directory containing parquet files
+- **tokenizer_ref**: Reference to tokenizer asset
+
+<Note>
+The `dataset_config.data` path should point to a directory containing partitioned parquet files organized by language and corpus.
+</Note>
+
+## Loading Assets in Code
+
+### Loading Models
+
+```python
+from fairseq2.models.hub import load_model
+
+# Load model by asset name
+model = load_model("omniASR_CTC_300M_v2")
+
+# With device and dtype specifications
+model = load_model(
+    "omniASR_LLM_1B_v2",
+    device="cuda",
+    dtype=torch.bfloat16
+)
+```
+
+### Loading Tokenizers
+
+```python
+from fairseq2.data.tokenizers.hub import load_tokenizer
+
+# Load tokenizer by asset name
+tokenizer = load_tokenizer("omniASR_tokenizer_written_v2")
+
+# Create encoder/decoder
+encoder = tokenizer.create_encoder()
+decoder = tokenizer.create_decoder(skip_special_tokens=True)
+```
+
+### Using in Training Configs
+
+Reference assets by name in recipe YAML files:
+
+```yaml
+model:
+  name: "omniASR_CTC_300M_v2"
+
+dataset:
+  name: "example_dataset"
+  train_split: "train"
+  valid_split: "dev"
+
+tokenizer:
+  name: "omniASR_tokenizer_written_v2"
+```
+
+## Creating Custom Asset Cards
+
+### Adding a Custom Model
+
+1. Duplicate an existing model card
+2. Update the `name` field with a unique identifier
+3. Update the `checkpoint` field to point to your model weights
+4. Ensure `model_arch` matches your model's architecture
+
+```yaml
+name: my_custom_asr_model
+model_family: wav2vec2_asr
+model_arch: 300m_v2
+checkpoint: /path/to/my/model/checkpoint.pt
+tokenizer_ref: omniASR_tokenizer_written_v2
+```
+
+### Adding Multiple Assets
+
+Separate multiple asset definitions with `---` in the same YAML file:
+
+```yaml
+name: custom_tokenizer
+tokenizer_family: char_tokenizer
+tokenizer: /path/to/tokenizer.model
+
+---
+
+name: custom_model_300m
+model_family: wav2vec2_asr
+model_arch: 300m_v2
+checkpoint: /path/to/model_300m.pt
+tokenizer_ref: custom_tokenizer
+
+---
+
+name: custom_model_1b
+model_family: wav2vec2_asr
+model_arch: 1b_v2
+checkpoint: /path/to/model_1b.pt
+tokenizer_ref: custom_tokenizer
+```
+
+## Asset Card Locations
+
+Asset cards are stored in the `/src/omnilingual_asr/cards/` directory:
+
+- **Models**: `/src/omnilingual_asr/cards/models/`
+- **Datasets**: `/src/omnilingual_asr/cards/datasets/`
+
+<Warning>
+Fairseq2 automatically discovers asset cards in registered directories. Make sure your custom cards are placed in the correct location or registered programmatically.
+</Warning>
+
+## Best Practices
+
+1. **Use descriptive names**: Include model size and version in the asset name
+2. **Version your assets**: Use suffixes like `_v2` to track iterations
+3. **Organize by purpose**: Keep model, tokenizer, and dataset cards in separate files
+4. **Document checkpoints**: Use comments to note training details or performance metrics
+5. **Test locally first**: Verify custom assets load correctly before deployment
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Asset not found error">
+Ensure the asset card is in a registered directory and the `name` field matches exactly what you're loading.
+
+```python
+# Check if asset is registered
+from fairseq2.assets import asset_store
+print(asset_store.retrieve_card("your_asset_name"))
+```
+</Accordion>
+
+<Accordion title="Checkpoint download fails">
+Verify the URL is accessible and check your network connection. For local paths, ensure they use absolute paths or proper environment variables like `$HOME`.
+</Accordion>
+
+<Accordion title="Architecture mismatch">
+Ensure `model_arch` matches a valid configuration in `/src/omnilingual_asr/models/{model_family}/config.py`.
+</Accordion>
+</AccordionGroup>

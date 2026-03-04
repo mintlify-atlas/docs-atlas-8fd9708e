@@ -1,0 +1,157 @@
+---
+title: 'ContextExample'
+description: 'Context example for zero-shot transcription'
+---
+
+## Overview
+
+`ContextExample` represents a single context example with paired audio and text, used for zero-shot transcription with the `omniASR_LLM_7B_ZS` model.
+
+## Structure
+
+`ContextExample` is a dataclass with two fields:
+
+<ParamField path="audio" type="str | Path | bytes | NDArray[np.int8] | dict" required>
+  Audio input in one of the following formats:
+  - `str` or `Path`: Path to an audio file
+  - `bytes`: Raw audio bytes
+  - `NDArray[np.int8]`: Audio data as numpy array
+  - `dict`: Pre-decoded audio with `'waveform'` and `'sample_rate'` keys
+</ParamField>
+
+<ParamField path="text" type="str" required>
+  Corresponding text transcription for the audio. This demonstrates the expected transcription style, language, and formatting.
+</ParamField>
+
+## Usage
+
+Context examples are used with `ASRInferencePipeline.transcribe_with_context()` to perform zero-shot transcription. They provide the model with reference audio-text pairs to learn the transcription style.
+
+### Basic Example
+
+```python
+from omnilingual_asr.models.inference import ContextExample
+from pathlib import Path
+
+# Create context examples from audio files
+context = [
+    ContextExample(audio="example1.wav", text="hello world"),
+    ContextExample(audio="example2.wav", text="good morning"),
+    ContextExample(audio=Path("example3.wav"), text="how are you")
+]
+```
+
+### Using Pre-decoded Audio
+
+```python
+import numpy as np
+
+# From pre-decoded waveforms
+context = [
+    ContextExample(
+        audio={"waveform": waveform_array, "sample_rate": 16000},
+        text="transcription text"
+    )
+]
+```
+
+### Using with ASRInferencePipeline
+
+```python
+from omnilingual_asr.models.inference import ASRInferencePipeline, ContextExample
+
+# Initialize zero-shot pipeline
+pipeline = ASRInferencePipeline("omniASR_LLM_7B_ZS")
+
+# Prepare context examples for each target audio
+context_examples_per_audio = [
+    [
+        ContextExample(audio="ctx1.wav", text="reference one"),
+        ContextExample(audio="ctx2.wav", text="reference two")
+    ],
+    [
+        ContextExample(audio="ctx3.wav", text="another reference"),
+        ContextExample(audio="ctx4.wav", text="more context")
+    ]
+]
+
+# Target audios to transcribe
+target_audios = ["target1.wav", "target2.wav"]
+
+# Transcribe with context
+transcriptions = pipeline.transcribe_with_context(
+    target_audios,
+    context_examples_per_audio
+)
+```
+
+## Context Example Requirements
+
+<Note>
+  **Training Configuration**: The zero-shot model was trained with:
+  - Up to 30 seconds per context example
+  - Exactly 10 context examples per training sample
+</Note>
+
+### Automatic Replication
+
+The pipeline automatically handles context example count:
+
+- **Fewer than 10 examples**: Automatically replicated to reach 10 total
+- **More than 10 examples**: Automatically cropped to first 10
+- **At least 1 required**: You must provide at least one context example
+
+```python
+# These are automatically replicated to 10 examples
+context = [
+    ContextExample(audio="ctx1.wav", text="example one"),
+    ContextExample(audio="ctx2.wav", text="example two")
+]
+# Result: [ctx1, ctx2, ctx1, ctx2, ctx1, ctx2, ctx1, ctx2, ctx1, ctx2]
+
+# These are automatically cropped to 10 examples
+context = [ContextExample(audio=f"ctx{i}.wav", text=f"ex {i}") for i in range(15)]
+# Result: First 10 examples used
+```
+
+## Best Practices
+
+1. **Quality over quantity**: Provide high-quality context examples that closely match your target domain
+2. **Consistent style**: Use context examples with consistent transcription style (punctuation, formatting)
+3. **Language matching**: Use context examples in the same language as your target audio
+4. **Audio length**: Keep context examples under 30 seconds each
+5. **Diversity**: If possible, provide varied examples to cover different acoustic conditions
+
+## Example: Low-Resource Language
+
+```python
+from omnilingual_asr.models.inference import ASRInferencePipeline, ContextExample
+
+# Initialize pipeline
+pipeline = ASRInferencePipeline("omniASR_LLM_7B_ZS")
+
+# Context examples in a low-resource language
+context_examples = [[
+    ContextExample(
+        audio="low_res_audio1.wav",
+        text="native language transcription 1"
+    ),
+    ContextExample(
+        audio="low_res_audio2.wav",
+        text="native language transcription 2"
+    ),
+    ContextExample(
+        audio="low_res_audio3.wav",
+        text="native language transcription 3"
+    )
+]]
+
+# Transcribe new audio in the same low-resource language
+target = ["new_low_res_audio.wav"]
+result = pipeline.transcribe_with_context(target, context_examples)
+print(result[0])  # Transcription following the context style
+```
+
+## Source Reference
+
+See implementation at `src/omnilingual_asr/models/inference/pipeline.py:64`

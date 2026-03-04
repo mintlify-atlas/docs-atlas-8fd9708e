@@ -1,0 +1,452 @@
+---
+title: Language Conditioning
+description: Using language IDs to improve transcription quality with LLM-based models
+---
+
+## Overview
+
+Language conditioning allows LLM-based ASR models (`wav2vec2_llama`) to leverage language information during decoding, improving transcription accuracy. CTC models ignore language conditioning as they perform direct frame-level classification.
+
+<Note>
+Language conditioning is **only supported** by LLM-based models (`omniASR_LLM_*`). CTC models (`omniASR_CTC_*`) ignore the language parameter.
+</Note>
+
+## Supported Languages
+
+Omnilingual ASR supports 1,682 languages with their script variants. The complete list is defined in `/src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py:9-1682`.
+
+### Language ID Format
+
+Language IDs use the format: `{language_code}_{script}`
+
+**Examples:**
+- `eng_Latn` - English (Latin script)
+- `arb_Arab` - Modern Standard Arabic (Arabic script)
+- `cmn_Hans` - Mandarin Chinese (Simplified)
+- `cmn_Hant` - Mandarin Chinese (Traditional)
+- `uzb_Cyrl` - Uzbek (Cyrillic script)
+- `uzb_Latn` - Uzbek (Latin script)
+
+<Accordion title="Common Language IDs">
+```python
+# Major languages
+eng_Latn  # English
+spa_Latn  # Spanish
+fra_Latn  # French
+deu_Latn  # German
+ita_Latn  # Italian
+por_Latn  # Portuguese
+rus_Cyrl  # Russian
+jpn_Jpan  # Japanese
+kor_Hang  # Korean
+arb_Arab  # Arabic
+hin_Deva  # Hindi
+ben_Beng  # Bengali
+
+# Chinese variants
+cmn_Hans  # Mandarin (Simplified)
+cmn_Hant  # Mandarin (Traditional)
+yue_Hant  # Cantonese (Traditional)
+yue_Hans  # Cantonese (Simplified)
+```
+</Accordion>
+
+## Using Language Conditioning
+
+### Inference with Language IDs
+
+Pass language IDs to the inference pipeline for better transcription:
+
+```python
+from omnilingual_asr.models.inference import ASRInferencePipeline
+
+# Initialize pipeline with LLM model
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_LLM_1B_v2",
+    device="cuda",
+    dtype=torch.bfloat16
+)
+
+# Transcribe with language conditioning
+audio_files = ["english.wav", "spanish.wav", "french.wav"]
+languages = ["eng_Latn", "spa_Latn", "fra_Latn"]
+
+transcriptions = pipeline.transcribe(
+    inp=audio_files,
+    lang=languages,
+    batch_size=4
+)
+```
+
+### Mixed Language Batches
+
+You can process different languages in the same batch:
+
+```python
+# Mix of languages and unknown
+audio_files = [
+    "audio1.wav",  # English
+    "audio2.wav",  # Spanish
+    "audio3.wav",  # Unknown language
+    "audio4.wav",  # French
+]
+
+languages = [
+    "eng_Latn",
+    "spa_Latn",
+    None,  # No conditioning for unknown
+    "fra_Latn"
+]
+
+transcriptions = pipeline.transcribe(
+    inp=audio_files,
+    lang=languages,
+    batch_size=4
+)
+```
+
+<Warning>
+The `lang` list must be the same length as `inp`. Use `None` for audios where you don't know the language or want no conditioning.
+</Warning>
+
+### Without Language Conditioning
+
+You can omit language IDs, but quality may degrade:
+
+```python
+# No language conditioning
+transcriptions = pipeline.transcribe(
+    inp=audio_files,
+    batch_size=4
+)
+# Warning logged: "Using an LLM model without a `lang` code 
+#                  can lead to degraded transcription quality."
+```
+
+## When to Use Language Conditioning
+
+### ✅ Recommended Use Cases
+
+<AccordionGroup>
+<Accordion title="Known Language Corpus">
+When transcribing audio where you know the language in advance:
+
+```python
+# Language detection done separately
+detected_lang = language_detector.detect(audio)
+
+transcription = pipeline.transcribe(
+    inp=[audio],
+    lang=[detected_lang]
+)
+```
+</Accordion>
+
+<Accordion title="Multilingual Datasets with Metadata">
+When processing datasets with language labels:
+
+```python
+import pandas as pd
+
+df = pd.read_csv("dataset.csv")
+audios = df["audio_path"].tolist()
+languages = df["language"].tolist()
+
+transcriptions = pipeline.transcribe(
+    inp=audios,
+    lang=languages,
+    batch_size=8
+)
+```
+</Accordion>
+
+<Accordion title="Language-Specific Applications">
+Applications targeting specific languages:
+
+```python
+# Spanish call center transcription
+SPANISH_LANG = "spa_Latn"
+
+for audio_batch in call_recordings:
+    transcriptions = pipeline.transcribe(
+        inp=audio_batch,
+        lang=[SPANISH_LANG] * len(audio_batch),
+        batch_size=16
+    )
+```
+</Accordion>
+</AccordionGroup>
+
+### ❌ When Not to Use
+
+<AccordionGroup>
+<Accordion title="CTC Models">
+Language conditioning has no effect on CTC models:
+
+```python
+# Using CTC model
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_CTC_300M_v2"  # CTC model
+)
+
+# Language parameter is ignored
+transcriptions = pipeline.transcribe(
+    inp=audios,
+    lang=["eng_Latn"] * len(audios)  # ⚠️ Ignored!
+)
+# Info logged: "Found lang=... with a CTC model. Ignoring."
+```
+</Accordion>
+
+<Accordion title="Code-Switching Audio">
+For audio with multiple languages, language conditioning may hurt:
+
+```python
+# Audio contains English and Spanish
+# Don't use language conditioning
+transcriptions = pipeline.transcribe(
+    inp=[codeswitched_audio],
+    lang=None  # Better without conditioning
+)
+```
+</Accordion>
+
+<Accordion title="Uncertain Language Labels">
+If language labels are unreliable, avoid conditioning:
+
+```python
+# Uncertain labels from weak classifier
+if language_confidence < 0.8:
+    lang = None
+else:
+    lang = detected_language
+
+transcription = pipeline.transcribe(
+    inp=[audio],
+    lang=[lang]
+)
+```
+</Accordion>
+</AccordionGroup>
+
+## Performance Impact
+
+### Quality Improvements
+
+Language conditioning typically provides:
+
+- **2-5% WER reduction** on matched languages
+- **Better handling of rare words** in that language
+- **Improved punctuation and capitalization** (language-specific)
+- **Reduced hallucinations** from incorrect language assumptions
+
+### When Quality Improves Most
+
+1. **Low-resource languages**: Conditioning helps the model focus on the right character set and phonology
+2. **Script-specific languages**: Chinese, Arabic, Hindi benefit significantly
+3. **Ambiguous audio**: Poor quality or accented speech
+
+<Note>
+Language conditioning has minimal impact on high-quality English audio but can significantly improve low-resource language transcription.
+</Note>
+
+## Implementation Details
+
+### How Language Conditioning Works
+
+For LLM models, the language ID is converted to a special token and prepended to the decoder:
+
+```python
+# Simplified implementation concept
+lang_token = f"<{lang_id}>"
+encoded_lang = tokenizer.encode(lang_token)
+
+# During beam search generation
+decoder_input = [encoded_lang] + decoder_context
+```
+
+**Code reference:** `/src/omnilingual_asr/models/inference/pipeline.py:596-609`
+
+### Training with Language Conditioning
+
+During training, language IDs are automatically included from dataset metadata:
+
+```python
+# Dataset partition structure
+Partition(lang="eng_Latn", corpus="librispeech")
+Partition(lang="fra_Latn", corpus="common_voice")
+
+# Language info flows through the pipeline
+batch.example["lang"] = ["eng_Latn", "eng_Latn", "fra_Latn"]
+```
+
+**Code reference:** `/src/omnilingual_asr/datasets/storage/mixture_parquet_storage.py:54-59`
+
+## Language Detection Integration
+
+Integrate external language detection for unknown audio:
+
+```python
+import torchaudio
+from speechbrain.inference.classifiers import EncoderClassifier
+
+# Load language detector
+lang_detector = EncoderClassifier.from_hparams(
+    source="speechbrain/lang-id-voxlingua107-ecapa",
+    savedir="tmp_lang_id"
+)
+
+def detect_and_transcribe(audio_path):
+    # Detect language
+    signal, sr = torchaudio.load(audio_path)
+    lang_prob = lang_detector.classify_batch(signal)
+    detected_lang = lang_prob[3][0]  # e.g., "en"
+    
+    # Map to omnilingual format
+    lang_map = {
+        "en": "eng_Latn",
+        "es": "spa_Latn",
+        "fr": "fra_Latn",
+        # ... add more mappings
+    }
+    
+    omni_lang = lang_map.get(detected_lang)
+    
+    # Transcribe with detected language
+    transcription = pipeline.transcribe(
+        inp=[audio_path],
+        lang=[omni_lang]
+    )
+    
+    return transcription[0], omni_lang
+```
+
+## Checking Supported Languages
+
+Verify if a language is supported:
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+# Check if language is supported
+lang_id = "eng_Latn"
+if lang_id in supported_langs:
+    print(f"{lang_id} is supported")
+else:
+    print(f"{lang_id} is NOT supported")
+
+# List all supported languages
+print(f"Total languages: {len(supported_langs)}")
+for lang in supported_langs[:10]:
+    print(lang)
+```
+
+## Best Practices
+
+<AccordionGroup>
+<Accordion title="Always Provide Language for LLM Models">
+When using LLM models and you know the language, always provide it:
+
+```python
+# ✅ Good
+transcriptions = pipeline.transcribe(
+    inp=audios,
+    lang=["eng_Latn"] * len(audios)
+)
+
+# ❌ Suboptimal
+transcriptions = pipeline.transcribe(
+    inp=audios
+)  # Missing lang parameter
+```
+</Accordion>
+
+<Accordion title="Use None for Unknown Languages">
+Don't guess - use `None` if uncertain:
+
+```python
+languages = [
+    "eng_Latn" if is_english(audio) else None
+    for audio in audios
+]
+```
+</Accordion>
+
+<Accordion title="Validate Language IDs">
+Check against supported languages before use:
+
+```python
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+def safe_get_lang(detected_lang):
+    if detected_lang in supported_langs:
+        return detected_lang
+    print(f"Warning: {detected_lang} not supported")
+    return None
+```
+</Accordion>
+
+<Accordion title="Batch by Language When Possible">
+Group same-language audio for potentially better batching:
+
+```python
+# Group by language
+from collections import defaultdict
+
+by_lang = defaultdict(list)
+for audio, lang in zip(audios, languages):
+    by_lang[lang].append(audio)
+
+# Process each language group
+for lang, lang_audios in by_lang.items():
+    transcriptions = pipeline.transcribe(
+        inp=lang_audios,
+        lang=[lang] * len(lang_audios),
+        batch_size=8
+    )
+```
+</Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Language ID not in supported list">
+Error when using unsupported language ID:
+
+```python
+# Check if supported
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+if your_lang_id not in supported_langs:
+    print(f"{your_lang_id} not supported")
+    # Find similar
+    similar = [l for l in supported_langs if l.startswith(your_lang_id[:3])]
+    print(f"Similar languages: {similar}")
+```
+</Accordion>
+
+<Accordion title="Wrong language conditioning">
+If you accidentally use the wrong language, transcription quality degrades. Always validate:
+
+```python
+# Add validation
+assert all(l in supported_langs or l is None for l in languages)
+```
+</Accordion>
+
+<Accordion title="Length mismatch error">
+```
+AssertionError: `lang` must be a list of the same length as `inp`
+```
+
+Fix:
+```python
+# Ensure same length
+assert len(audios) == len(languages)
+
+# Or use None for all
+languages = [None] * len(audios)
+```
+</Accordion>
+</AccordionGroup>

@@ -1,0 +1,507 @@
+---
+title: 'LLM-Based ASR Models'
+description: 'Autoregressive speech recognition with language conditioning and unlimited length support'
+---
+
+## Overview
+
+The LLM-based ASR models combine a Wav2Vec2 encoder with a Llama decoder for autoregressive text generation. These models support optional language conditioning and offer the highest transcription accuracy across 1,600+ languages. The December 2025 update introduced "Unlimited" variants that can process audio of any length.
+
+<Note>
+LLM models achieve **state-of-the-art performance** with character error rates (CER) below 10% for 78% of the 1,600+ supported languages when using the 7B variant.
+</Note>
+
+## Architecture
+
+The LLM model family uses an encoder-decoder architecture:
+
+```
+[Audio 16kHz] → Wav2Vec2 Feature Extractor → Wav2Vec2 Encoder → Linear Projection → Llama Decoder → [Vocab Logits]
+                (CNN downsampling ~320x)       (Transformer)     (to 4096-dim)       (Transformer)
+                                               (1024/1280/2048)                      (4096-dim)
+```
+
+### Key Components
+
+- **Wav2Vec2 Encoder**: Produces contextualized audio embeddings (1024/1280/2048-dim depending on model size)
+- **Linear Projection**: Projects audio embeddings to match Llama decoder's 4096-dimensional input space
+- **Llama Decoder**: Autoregressive transformer decoder for text generation
+- **Final Projection**: Maps decoder outputs to vocabulary logits
+- **Beam Search**: Generates multiple hypotheses and selects the best transcription
+
+## Model Variants
+
+### Standard LLM Models (with Language Conditioning)
+
+<Tabs>
+  <Tab title="300M">
+    **omniASR_LLM_300M / omniASR_LLM_300M_v2**
+    
+    - **Parameters**: 1,627,603,584
+    - **Download Size**: 6.1 GiB (FP32)
+    - **Inference VRAM**: ~5 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: ~1x real-time (RTF: 0.090)
+    - **Audio Embedding**: 1024-dim
+    - **Decoder Dimension**: 4096-dim
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Features**: Optional language conditioning
+  </Tab>
+  
+  <Tab title="1B">
+    **omniASR_LLM_1B / omniASR_LLM_1B_v2**
+    
+    - **Parameters**: 2,275,710,592
+    - **Download Size**: 8.5 GiB (FP32)
+    - **Inference VRAM**: ~6 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: ~1x real-time (RTF: 0.091)
+    - **Audio Embedding**: 1280-dim
+    - **Decoder Dimension**: 4096-dim
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Features**: Optional language conditioning
+  </Tab>
+  
+  <Tab title="3B">
+    **omniASR_LLM_3B / omniASR_LLM_3B_v2**
+    
+    - **Parameters**: 4,376,679,040
+    - **Download Size**: 17.0 GiB (FP32)
+    - **Inference VRAM**: ~10 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: ~1x real-time (RTF: 0.093)
+    - **Audio Embedding**: 2048-dim
+    - **Decoder Dimension**: 4096-dim
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Features**: Optional language conditioning
+  </Tab>
+  
+  <Tab title="7B">
+    **omniASR_LLM_7B / omniASR_LLM_7B_v2**
+    
+    - **Parameters**: 7,801,041,536
+    - **Download Size**: 30.0 GiB (FP32)
+    - **Inference VRAM**: ~17 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: ~1x real-time (RTF: 0.092)
+    - **Audio Embedding**: 2048-dim
+    - **Decoder Dimension**: 4096-dim
+    - **Vocabulary Size**: 9,812 (v1) / 9,818 (variant7) / 10,288 (v2)
+    - **Features**: Optional language conditioning, state-of-the-art accuracy
+  </Tab>
+</Tabs>
+
+### Unlimited Length Models
+
+Released in December 2025, these variants support transcription of **unlimited audio length**:
+
+<Tabs>
+  <Tab title="300M Unlimited">
+    **omniASR_LLM_Unlimited_300M_v2**
+    
+    - **Parameters**: 1,627,603,584
+    - **Max Audio Length**: Unlimited
+    - **Segment Size**: 15 seconds
+    - **Context Window**: 1 previous segment
+    - **Speed (30s)**: RTF 0.092 (~1x)
+    - **Speed (15min)**: RTF 0.206 (~0.5x)
+    - **VRAM**: ~5 GiB
+  </Tab>
+  
+  <Tab title="1B Unlimited">
+    **omniASR_LLM_Unlimited_1B_v2**
+    
+    - **Parameters**: 2,275,710,592
+    - **Max Audio Length**: Unlimited
+    - **Segment Size**: 15 seconds
+    - **Context Window**: 1 previous segment
+    - **Speed (30s)**: RTF 0.097 (~1x)
+    - **Speed (15min)**: RTF 0.207 (~0.5x)
+    - **VRAM**: ~6 GiB
+  </Tab>
+  
+  <Tab title="3B Unlimited">
+    **omniASR_LLM_Unlimited_3B_v2**
+    
+    - **Parameters**: 4,376,679,040
+    - **Max Audio Length**: Unlimited
+    - **Segment Size**: 15 seconds
+    - **Context Window**: 1 previous segment
+    - **Speed (30s)**: RTF 0.095 (~1x)
+    - **Speed (15min)**: RTF 0.208 (~0.5x)
+    - **VRAM**: ~10 GiB
+  </Tab>
+  
+  <Tab title="7B Unlimited">
+    **omniASR_LLM_Unlimited_7B_v2**
+    
+    - **Parameters**: 7,801,041,536
+    - **Max Audio Length**: Unlimited
+    - **Segment Size**: 15 seconds
+    - **Context Window**: 1 previous segment
+    - **Speed (30s)**: RTF 0.097 (~1x)
+    - **Speed (15min)**: RTF 0.208 (~0.5x)
+    - **VRAM**: ~17 GiB
+  </Tab>
+</Tabs>
+
+<Warning>
+**Unlimited Model Notes**: 
+- Not described in the original research paper (released after publication)
+- Accuracy comparable to standard LLM models
+- Fine-tuning recipes currently not supported
+- Can be extended for real-time/streaming applications
+</Warning>
+
+## Language Conditioning
+
+LLM models support optional language identification to improve transcription quality:
+
+### Without Language Conditioning
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_v2")
+
+# Audio-only transcription (language auto-detected)
+audio_files = ["/path/to/audio1.flac", "/path/to/audio2.wav"]
+transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+```
+
+<Note>
+The models were trained with an 80/20 split of samples **with and without** language IDs, enabling robust performance in both scenarios. However, providing language codes is recommended for best results.
+</Note>
+
+### With Language Conditioning (Recommended)
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_7B_v2")
+
+audio_files = [
+    "/path/to/english.wav",
+    "/path/to/mandarin.flac",
+    "/path/to/russian.wav"
+]
+
+# Provide language codes for better accuracy
+lang_codes = ["eng_Latn", "cmn_Hans", "rus_Cyrl"]
+
+transcriptions = pipeline.transcribe(
+    audio_files,
+    lang=lang_codes,
+    batch_size=3
+)
+```
+
+### Language Code Format
+
+Languages follow the format `{language_code}_{script}`:
+
+- `eng_Latn` - English (Latin script)
+- `cmn_Hans` - Mandarin Chinese (Simplified)
+- `cmn_Hant` - Mandarin Chinese (Traditional)
+- `rus_Cyrl` - Russian (Cyrillic script)
+- `ara_Arab` - Arabic (Arabic script)
+- `hin_Deva` - Hindi (Devanagari script)
+
+```python
+# Access supported languages programmatically
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+print(f"Total languages: {len(supported_langs)}")  # 1600+
+print("eng_Latn" in supported_langs)  # True
+```
+
+## Unlimited Length Models
+
+### How It Works
+
+Unlimited models use a **segmented approach** with context:
+
+1. **Segmentation**: Audio split into 15-second segments
+2. **Contextual Decoding**: Each segment uses embeddings from the previous segment
+3. **Iterative Processing**: Segments decoded sequentially with rolling context
+4. **Text Accumulation**: Transcriptions concatenated to form complete output
+
+```python
+# Internal processing (from models/README.md)
+# Training: N=15 seconds per segment, M=1 previous segment for context
+# Inference: Process segments iteratively with context window
+```
+
+### Usage Example
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Load unlimited length model
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_3B_v2")
+
+# Transcribe long-form audio (e.g., 10-minute podcast)
+long_audio = ["/path/to/podcast.wav"]  # 10 minutes
+transcriptions = pipeline.transcribe(
+    long_audio,
+    lang=["eng_Latn"],
+    batch_size=1
+)
+
+print(transcriptions[0])  # Full 10-minute transcription
+```
+
+<Warning>
+**Standard LLM Models**: Maximum audio length is **40 seconds**. For longer audio, use Unlimited variants or split into segments.
+</Warning>
+
+## Usage Patterns
+
+### Basic Transcription
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_1B_v2")
+
+audio_files = ["/path/to/audio.flac"]
+transcriptions = pipeline.transcribe(audio_files, batch_size=1)
+print(transcriptions[0])
+```
+
+### Mixed Language Batch
+
+```python
+# Different languages in same batch
+audio_files = [
+    "/path/to/spanish.wav",
+    "/path/to/japanese.flac",
+    "/path/to/swahili.wav"
+]
+
+lang_codes = ["spa_Latn", "jpn_Jpan", "swa_Latn"]
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_v2")
+transcriptions = pipeline.transcribe(audio_files, lang=lang_codes, batch_size=3)
+```
+
+### HuggingFace Dataset Integration
+
+```python
+from datasets import load_dataset
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Load dataset
+dataset = load_dataset(
+    "facebook/omnilingual-asr-corpus",
+    "lij_Latn",  # Ligurian
+    split="train",
+    streaming=True
+)
+batch = next(dataset.iter(5))
+
+# Convert to pipeline format
+audio_data = [
+    {"waveform": x["array"], "sample_rate": x["sampling_rate"]}
+    for x in batch["audio"]
+]
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_1B_v2")
+transcriptions = pipeline.transcribe(audio_data, batch_size=2)
+
+for orig, pred in zip(batch["raw_text"], transcriptions):
+    print(f"Ground Truth: {orig}")
+    print(f"Predicted:    {pred}\n")
+```
+
+### Custom Beam Search Configuration
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+from omnilingual_asr.models.wav2vec2_llama.model import Wav2Vec2LlamaBeamSearchConfig
+
+# Configure beam search
+beam_config = Wav2Vec2LlamaBeamSearchConfig(
+    nbest=1,           # Number of hypotheses
+    length_norm=False  # Length normalization
+)
+
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_LLM_3B_v2",
+    beam_search_config=beam_config
+)
+
+transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+```
+
+## Autoregressive Generation
+
+Unlike CTC models, LLM models generate text **sequentially** (token-by-token):
+
+1. **Audio Encoding**: Wav2Vec2 encoder processes full audio
+2. **Projection**: Audio embeddings projected to Llama space (4096-dim)
+3. **Decoder Context**: Optional language ID or previous segments added
+4. **Beam Search**: Generate multiple hypotheses autoregressively
+5. **Selection**: Best hypothesis selected based on beam search score
+
+```python
+# Internal generation flow (simplified from pipeline.py:377-398)
+decoder_context, decoder_context_seq_lens, audio_embeddings = model(
+    batch, return_decoder_inputs=True
+)
+
+hypothesis_tokens, hypothesis_lens = beam_search_generator.generate_hypotheses(
+    decoder_context_inputs=decoder_context,
+    decoder_context_seq_lens=decoder_context_seq_lens,
+    audio_embeddings=audio_embeddings,
+    batch=None
+)
+
+# Decode tokens to text
+for i in range(hypothesis_tokens.shape[0]):
+    tokens = hypothesis_tokens[i, :hypothesis_lens[i]]
+    text = token_decoder(tokens)
+```
+
+This autoregressive approach enables:
+- **Language modeling**: Better fluency and grammar
+- **Context awareness**: Uses previous tokens to inform generation
+- **Flexibility**: Supports language conditioning and context examples
+
+## Performance Characteristics
+
+### Speed vs. Accuracy Trade-off
+
+| Model Size | RTF (30s) | Accuracy | VRAM | Best Use Case |
+|------------|-----------|----------|------|---------------|
+| 300M | 0.090 | Good | 5 GiB | Edge deployment, cost-sensitive |
+| 1B | 0.091 | Better | 6 GiB | Balanced production |
+| 3B | 0.093 | Great | 10 GiB | High-quality production |
+| 7B | 0.092 | Best | 17 GiB | Research, maximum accuracy |
+
+<Note>
+**RTF (Real-Time Factor)**: ~0.09 means the model processes 1 second of audio in ~0.09 seconds (about real-time speed).
+</Note>
+
+### CER Performance
+
+The 7B LLM model achieves:
+- **CER < 10%** for 78% of 1,600+ languages
+- State-of-the-art results across diverse language families
+- Improved performance with language conditioning
+
+See [per-language results](https://github.com/facebookresearch/omnilingual-asr/blob/main/per_language_results_table_7B_llm_asr.csv) for detailed metrics.
+
+## Input Validation
+
+The model performs validation at every forward pass to ensure correct inputs:
+
+```python
+# From models/wav2vec2_llama/model.py
+class Wav2Vec2LlamaModel:
+    def ensure_valid_forward_inputs(self, batch):
+        # LLM+LID: Audio + optional language ID
+        # LLM+ZS: Audio + exactly 10 context examples
+        ...
+```
+
+<Accordion title="Input Validation Rules">
+  - **Standard LLM Models**: Accept audio with optional language codes
+  - **Zero-Shot Model**: Requires exactly 10 context examples (see Zero-Shot page)
+  - **Unlimited Models**: No audio length restriction
+  - **Batch Format**: Uses fairseq2 `Seq2SeqBatch` with optional `.example` fields
+</Accordion>
+
+## Model Selection Guide
+
+<CardGroup cols={2}>
+  <Card title="Standard LLM" icon="microphone">
+    **Use when:**
+    - Audio is under 40 seconds
+    - Language is known or auto-detectable
+    - Need maximum accuracy
+    - Real-time processing acceptable
+    
+    **Recommended**: `omniASR_LLM_7B_v2`
+  </Card>
+  
+  <Card title="Unlimited LLM" icon="infinity">
+    **Use when:**
+    - Audio is >40 seconds (podcasts, lectures)
+    - Processing long-form content
+    - Need streaming capability (custom integration)
+    - Accuracy comparable to standard models
+    
+    **Recommended**: `omniASR_LLM_Unlimited_7B_v2`
+  </Card>
+  
+  <Card title="Smaller Models (300M/1B)" icon="bolt">
+    **Use when:**
+    - Limited GPU memory (under 8 GiB)
+    - Cost-sensitive deployment
+    - Faster processing preferred
+    - Moderate accuracy acceptable
+  </Card>
+  
+  <Card title="CTC Models" icon="forward-fast">
+    **Use when:**
+    - Speed is critical (need 16x-96x faster)
+    - Language conditioning not needed
+    - On-device deployment
+    - Batch processing large volumes
+    
+    See: [CTC Models](/models/ctc-models)
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Custom Model Loading
+
+```python
+from fairseq2.models.hub import load_model
+from fairseq2.data.tokenizers.hub import load_tokenizer
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Load model and tokenizer separately
+model = load_model("omniASR_LLM_3B_v2", device="cuda", dtype=torch.bfloat16)
+tokenizer = load_tokenizer("omniASR_LLM_3B_v2")
+
+# Pass to pipeline
+pipeline = ASRInferencePipeline(
+    model_card=None,
+    model=model,
+    tokenizer=tokenizer
+)
+```
+
+### Batch Size Optimization
+
+```python
+# Find optimal batch size for your GPU
+for batch_size in [1, 2, 4, 8]:
+    try:
+        start = time.time()
+        pipeline.transcribe(audio_files[:batch_size], batch_size=batch_size)
+        elapsed = time.time() - start
+        print(f"Batch {batch_size}: {elapsed:.2f}s")
+    except torch.cuda.OutOfMemoryError:
+        print(f"Batch {batch_size}: OOM")
+        break
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Zero-Shot Models" icon="wand-magic-sparkles" href="/models/zero-shot">
+    Learn about in-context learning for unseen languages
+  </Card>
+  
+  <Card title="Model Specifications" icon="table" href="/models/model-specifications">
+    Detailed comparison of all model variants
+  </Card>
+  
+  <Card title="CTC Models" icon="forward-fast" href="/models/ctc-models">
+    Fast parallel generation for production
+  </Card>
+  
+  <Card title="Inference Guide" icon="book-open" href="/inference/overview">
+    Complete transcription workflows and examples
+  </Card>
+</CardGroup>

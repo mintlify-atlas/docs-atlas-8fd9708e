@@ -1,0 +1,223 @@
+---
+title: 'Audio Input Formats'
+description: 'Supported audio input formats for Omnilingual ASR'
+---
+
+## Overview
+
+Omnilingual ASR supports multiple audio input formats for flexible integration. All formats are automatically preprocessed (decoded, resampled to 16kHz, converted to mono, and normalized) by the inference pipeline.
+
+## AudioInput Type
+
+`AudioInput` is a type alias representing a list of audio samples in one of several supported formats:
+
+```python
+AudioInput = (
+    List[Path]
+    | List[str]
+    | List[str | Path]
+    | List[bytes]
+    | List[NDArray[np.int8]]
+    | List[bytes | NDArray[np.int8]]
+    | List[Dict[str, Any]]
+)
+```
+
+## Supported Formats
+
+### 1. File Paths (str or Path)
+
+Provide paths to audio files on disk.
+
+```python
+from pathlib import Path
+from omnilingual_asr.models.inference import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# Using strings
+audio_files = ["audio1.wav", "audio2.mp3", "/path/to/audio3.flac"]
+transcriptions = pipeline.transcribe(audio_files)
+
+# Using Path objects
+audio_files = [
+    Path("audio1.wav"),
+    Path("/absolute/path/audio2.wav")
+]
+transcriptions = pipeline.transcribe(audio_files)
+```
+
+<Note>
+  Supports common audio formats: WAV, MP3, FLAC, OGG, M4A, etc.
+</Note>
+
+### 2. Raw Audio Bytes
+
+Provide audio data as raw bytes (e.g., from HTTP requests or in-memory buffers).
+
+```python
+import requests
+
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# From HTTP request
+response = requests.get("https://example.com/audio.wav")
+audio_bytes = [response.content]
+transcriptions = pipeline.transcribe(audio_bytes)
+
+# From file reading
+with open("audio.wav", "rb") as f:
+    audio_data = f.read()
+transcriptions = pipeline.transcribe([audio_data])
+```
+
+### 3. NumPy Arrays
+
+Provide audio data as NumPy arrays (uint8 or int8 dtype).
+
+```python
+import numpy as np
+
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# From encoded audio bytes
+audio_array = np.frombuffer(audio_bytes, dtype=np.uint8)
+transcriptions = pipeline.transcribe([audio_array])
+```
+
+<Warning>
+  Only `uint8` and `int8` dtypes are supported for NumPy arrays. Other dtypes will raise an assertion error.
+</Warning>
+
+### 4. Pre-decoded Audio Dictionaries
+
+Provide already-decoded audio with waveform and sample rate. This is the most efficient format if you've already decoded the audio.
+
+```python
+import torch
+import torchaudio
+
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# Load and decode audio externally
+waveform, sample_rate = torchaudio.load("audio.wav")
+
+# Convert to dictionary format
+audio_dict = {
+    "waveform": waveform,
+    "sample_rate": sample_rate
+}
+
+transcriptions = pipeline.transcribe([audio_dict])
+```
+
+**Dictionary Format Requirements:**
+
+<ParamField path="waveform" type="torch.Tensor" required>
+  Audio waveform as a PyTorch tensor. Can be 1D (mono) or 2D (multi-channel). Multi-channel audio is automatically converted to mono.
+</ParamField>
+
+<ParamField path="sample_rate" type="int" required>
+  Sample rate of the audio in Hz. Audio is automatically resampled to 16kHz if needed.
+</ParamField>
+
+## Audio Preprocessing Pipeline
+
+Regardless of input format, all audio goes through the following preprocessing:
+
+1. **Decoding**: Audio bytes/files are decoded to waveforms (skipped for pre-decoded format)
+2. **Resampling**: Waveforms are resampled to 16kHz
+3. **Mono Conversion**: Multi-channel audio is converted to mono by averaging channels
+4. **Normalization**: Audio is normalized to zero mean and unit variance
+5. **Length Validation**: Non-streaming models enforce a 40-second maximum length
+
+## Length Constraints
+
+### Non-Streaming Models
+
+<ParamField path="MAX_ALLOWED_AUDIO_SEC" type="int" default="40">
+  Maximum audio length in seconds for non-streaming models.
+</ParamField>
+
+```python
+# This will raise ValueError
+long_audio = ["60_second_audio.wav"]  # Too long!
+transcriptions = pipeline.transcribe(long_audio)
+# ValueError: Max audio length is capped at 40s
+```
+
+### Streaming Models
+
+Streaming model variants (e.g., `omniASR_LLM_7B_Unlimited`) can handle audio of any length by processing it in segments.
+
+## Mixed Input Format Example
+
+You can mix different input formats in a single batch:
+
+```python
+from pathlib import Path
+
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# Mix paths and pre-decoded audio
+mixed_input = [
+    "audio1.wav",  # File path as string
+    Path("audio2.wav"),  # File path as Path
+    {"waveform": waveform, "sample_rate": 16000}  # Pre-decoded
+]
+
+transcriptions = pipeline.transcribe(mixed_input)
+```
+
+<Warning>
+  All elements in the input list must be of compatible types. Don't mix bytes with dictionaries, or file paths with numpy arrays in the same batch.
+</Warning>
+
+## Performance Considerations
+
+### Best Practices
+
+1. **Pre-decoded format**: Use pre-decoded dictionaries if you need to decode audio multiple times
+2. **Batch size**: Larger batches improve throughput but require more memory
+3. **File paths**: Most convenient but requires disk I/O
+4. **Bytes**: Good for streaming/HTTP scenarios
+
+### Batch Processing Example
+
+```python
+import glob
+from pathlib import Path
+
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# Process large directory in batches
+audio_files = [Path(f) for f in glob.glob("audio_dir/*.wav")]
+batch_size = 8
+
+all_transcriptions = []
+for i in range(0, len(audio_files), batch_size):
+    batch = audio_files[i:i+batch_size]
+    transcriptions = pipeline.transcribe(batch, batch_size=batch_size)
+    all_transcriptions.extend(transcriptions)
+
+print(f"Processed {len(all_transcriptions)} files")
+```
+
+## Error Handling
+
+```python
+try:
+    transcriptions = pipeline.transcribe(audio_input)
+except ValueError as e:
+    if "Max audio length" in str(e):
+        print("Audio too long for non-streaming model")
+    elif "Unsupported input type" in str(e):
+        print("Invalid audio format provided")
+except AssertionError as e:
+    if "Only uint8 numpy arrays" in str(e):
+        print("Numpy array must be uint8 or int8 dtype")
+```
+
+## Source Reference
+
+See type definition at `src/omnilingual_asr/models/inference/pipeline.py:51`

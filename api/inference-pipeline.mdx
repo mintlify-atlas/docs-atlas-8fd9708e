@@ -1,0 +1,185 @@
+---
+title: 'ASRInferencePipeline'
+description: 'High-level inference pipeline for audio transcription'
+---
+
+## Overview
+
+`ASRInferencePipeline` provides a high-level interface for performing speech-to-text transcription using Omnilingual ASR models. It handles audio preprocessing, model inference, and beam search decoding.
+
+## Constructor
+
+<ParamField path="model_card" type="str | None" required>
+  Model card name to load from the hub (e.g., `"omniASR_LLM_7B"`). Mutually exclusive with `model` and `tokenizer` parameters. Recommended for inference.
+</ParamField>
+
+<ParamField path="model" type="Wav2Vec2LlamaModel | Wav2Vec2AsrModel | None">
+  Pre-loaded model instance. Mutually exclusive with `model_card`. Must be provided together with `tokenizer`.
+</ParamField>
+
+<ParamField path="tokenizer" type="Tokenizer | None">
+  Pre-loaded tokenizer instance. Mutually exclusive with `model_card`. Must be provided together with `model`.
+</ParamField>
+
+<ParamField path="device" type="str | torch.device | None">
+  Device to run inference on. Defaults to `"cuda"` if available, otherwise `"cpu"`.
+</ParamField>
+
+<ParamField path="dtype" type="torch.dtype" default="torch.bfloat16">
+  Data type for model inference.
+</ParamField>
+
+<ParamField path="beam_search_config" type="Wav2Vec2LlamaBeamSearchConfig | None">
+  Optional beam search configuration. If not provided, uses default configuration with `nbest=1` and `length_norm=False`.
+</ParamField>
+
+### Example
+
+```python
+from omnilingual_asr.models.inference import ASRInferencePipeline
+
+# Method 1: Load from model card (recommended)
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+
+# Method 2: Use pre-loaded model and tokenizer
+from fairseq2.models.hub import load_model
+from fairseq2.data.tokenizers.hub import load_tokenizer
+
+model = load_model("omniASR_LLM_7B")
+tokenizer = load_tokenizer("omniASR_LLM_7B")
+pipeline = ASRInferencePipeline(
+    model_card=None,
+    model=model,
+    tokenizer=tokenizer,
+    device="cuda",
+    dtype=torch.bfloat16
+)
+```
+
+## Methods
+
+### transcribe
+
+```python
+pipeline.transcribe(
+    inp: AudioInput,
+    *,
+    lang: List[str | None] | None = None,
+    batch_size: int = 2
+) -> List[str]
+```
+
+Transcribes audio inputs into text with automatic preprocessing (decoding, resampling to 16kHz, converting to mono, normalizing).
+
+<ParamField path="inp" type="AudioInput" required>
+  Audio input in one of the following formats:
+  - `List[Path | str]`: Audio file paths
+  - `List[bytes]`: Raw audio data
+  - `List[np.ndarray]`: Audio data as uint8 numpy arrays
+  - `List[dict]`: Pre-decoded audio with `'waveform'` and `'sample_rate'` keys
+</ParamField>
+
+<ParamField path="lang" type="List[str | None] | None">
+  Language codes for input audios (e.g., `'eng_Latn'`, `'fra_Latn'`). Must be the same length as `inp`. Ignored for CTC models. For LLM models, providing language codes improves transcription quality.
+</ParamField>
+
+<ParamField path="batch_size" type="int" default="2">
+  Number of audio samples to process in each batch.
+</ParamField>
+
+<ResponseField name="transcriptions" type="List[str]">
+  Transcribed texts for each input audio.
+</ResponseField>
+
+#### Example
+
+```python
+from pathlib import Path
+
+# Transcribe audio files
+audio_files = [Path("audio1.wav"), Path("audio2.wav")]
+transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+
+# With language codes
+transcriptions = pipeline.transcribe(
+    audio_files,
+    lang=["eng_Latn", "fra_Latn"],
+    batch_size=2
+)
+
+# From pre-decoded audio
+audio_dicts = [
+    {"waveform": waveform1, "sample_rate": 16000},
+    {"waveform": waveform2, "sample_rate": 16000}
+]
+transcriptions = pipeline.transcribe(audio_dicts)
+```
+
+<Note>
+  Maximum audio length is capped at 40 seconds per sample. For longer audio, use the streaming model variant.
+</Note>
+
+### transcribe_with_context
+
+```python
+pipeline.transcribe_with_context(
+    inp: AudioInput,
+    context_examples: List[List[ContextExample]],
+    *,
+    batch_size: int = 1
+) -> List[str]
+```
+
+Transcribes audio using zero-shot learning with context examples. **Only works with the `omniASR_LLM_7B_ZS` model.**
+
+<ParamField path="inp" type="AudioInput" required>
+  Audio input (same formats as `transcribe` method).
+</ParamField>
+
+<ParamField path="context_examples" type="List[List[ContextExample]]" required>
+  A list of context examples for each input audio. Each inner list contains audio-text pairs demonstrating the transcription style/language. At least one context example is required per input. If fewer than 10 examples are provided, they are replicated. If more than 10 are provided, only the first 10 are used.
+</ParamField>
+
+<ParamField path="batch_size" type="int" default="1">
+  Number of audio samples to process in each batch.
+</ParamField>
+
+<ResponseField name="transcriptions" type="List[str]">
+  Transcribed texts for each input audio.
+</ResponseField>
+
+#### Example
+
+```python
+from omnilingual_asr.models.inference import ContextExample
+
+# Prepare context examples (audio-text pairs)
+context_examples = [
+    [
+        ContextExample(audio="context1.wav", text="hello world"),
+        ContextExample(audio="context2.wav", text="how are you")
+    ]
+]
+
+# Transcribe with context
+target_audio = ["target.wav"]
+transcriptions = pipeline.transcribe_with_context(
+    target_audio,
+    context_examples,
+    batch_size=1
+)
+```
+
+<Warning>
+  This method raises `NotImplementedError` if used with non-zero-shot models. Use the regular `transcribe()` method instead.
+</Warning>
+
+## Raises
+
+- `ValueError`: If both `model_card` and `model`/`tokenizer` are provided, or if only one of `model`/`tokenizer` is provided.
+- `ValueError`: If audio exceeds 40 seconds (non-streaming models).
+- `NotImplementedError`: If `transcribe_with_context()` is called on non-zero-shot models, or if `transcribe()` is called on zero-shot models.
+
+## Source Reference
+
+See implementation at `src/omnilingual_asr/models/inference/pipeline.py:148`

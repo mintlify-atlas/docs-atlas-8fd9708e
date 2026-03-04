@@ -1,0 +1,497 @@
+---
+title: Supported Languages
+description: Comprehensive guide to 1600+ supported languages and language ID format
+---
+
+Omnilingual ASR supports over **1,600 languages** across multiple scripts, including hundreds of languages never before covered by any ASR system.
+
+## Language ID Format
+
+Languages in Omnilingual ASR follow a standardized format:
+
+```
+{language_code}_{script}
+```
+
+### Format Components
+
+<ParamField path="language_code" type="string" required>
+  Three-letter ISO 639-3 language code (e.g., `eng` for English, `spa` for Spanish, `cmn` for Mandarin)
+</ParamField>
+
+<ParamField path="script" type="string" required>
+  Four-letter ISO 15924 script code (e.g., `Latn` for Latin, `Arab` for Arabic, `Hans` for Simplified Chinese)
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```python Common Languages
+"eng_Latn"  # English (Latin script)
+"spa_Latn"  # Spanish (Latin script)
+"fra_Latn"  # French (Latin script)
+"deu_Latn"  # German (Latin script)
+"cmn_Hans"  # Mandarin Chinese (Simplified)
+"cmn_Hant"  # Mandarin Chinese (Traditional)
+"jpn_Jpan"  # Japanese
+"kor_Hang"  # Korean (Hangul)
+"arb_Arab"  # Standard Arabic
+"rus_Cyrl"  # Russian (Cyrillic)
+"hin_Deva"  # Hindi (Devanagari)
+```
+
+```python Multiple Scripts
+# Same language, different scripts
+"aze_Latn"  # Azerbaijani (Latin script)
+"aze_Cyrl"  # Azerbaijani (Cyrillic script)
+"aze_Arab"  # Azerbaijani (Arabic script)
+
+"kmr_Latn"  # Kurdish (Latin script)
+"kmr_Cyrl"  # Kurdish (Cyrillic script)
+"kmr_Arab"  # Kurdish (Arabic script)
+
+"urd_Arab"  # Urdu (Arabic script)
+"urd_Deva"  # Urdu (Devanagari script)
+"urd_Latn"  # Urdu (Latin script)
+```
+
+```python Regional Variants
+# Dialect-specific variants
+"ell_Grek"             # Standard Greek
+"ell_Grek_cypr1249"    # Cypriot Greek
+
+"lld_Latn_gherd"       # Ladin (Gherdëina)
+"lld_Latn_valbadia"    # Ladin (Val Badia)
+
+"roh_Latn_surs1244"    # Romansh (Sursilvan)
+```
+</CodeGroup>
+
+## Accessing the Language List
+
+You can programmatically access the full list of supported languages:
+
+<CodeGroup>
+```python Basic Access
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+# Print total count
+print(f"Total supported languages: {len(supported_langs)}")
+
+# Print all languages
+for lang in supported_langs:
+    print(lang)
+```
+
+```python Check Specific Language
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+# Check if a language is supported
+lang_id = "eng_Latn"
+if lang_id in supported_langs:
+    print(f"{lang_id} is supported!")
+else:
+    print(f"{lang_id} is not supported")
+```
+
+```python Filter by Script
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+# Find all Latin-script languages
+latin_langs = [lang for lang in supported_langs if lang.endswith("_Latn")]
+print(f"Languages with Latin script: {len(latin_langs)}")
+
+# Find all Arabic-script languages
+arabic_langs = [lang for lang in supported_langs if lang.endswith("_Arab")]
+print(f"Languages with Arabic script: {len(arabic_langs)}")
+```
+
+```python Export to File
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+import json
+
+# Export as JSON
+with open("supported_languages.json", "w") as f:
+    json.dump(supported_langs, f, indent=2)
+
+# Export as CSV
+import csv
+with open("supported_languages.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["Language ID"])
+    for lang in supported_langs:
+        writer.writerow([lang])
+```
+</CodeGroup>
+
+## Script Coverage
+
+Omnilingual ASR supports multiple writing systems:
+
+<Tabs>
+  <Tab title="Latin Scripts">
+    **Latin Script (Latn)** - Most widely used
+    
+    The majority of supported languages use Latin script, including:
+    - European languages (English, Spanish, French, German, etc.)
+    - African languages (Swahili, Yoruba, Hausa, etc.)
+    - Southeast Asian languages (Indonesian, Vietnamese, Filipino, etc.)
+    - Indigenous American languages (Quechua, Guarani, Nahuatl, etc.)
+    
+    ```python
+    "eng_Latn", "spa_Latn", "fra_Latn", "deu_Latn", "ita_Latn",
+    "por_Latn", "pol_Latn", "nld_Latn", "ind_Latn", "vie_Latn"
+    ```
+  </Tab>
+  
+  <Tab title="Cyrillic Scripts">
+    **Cyrillic Script (Cyrl)**
+    
+    Used primarily for Slavic and Central Asian languages:
+    - Russian, Ukrainian, Belarusian
+    - Serbian, Bulgarian, Macedonian
+    - Kazakh, Kyrgyz, Tajik, Uzbek
+    - Many minority languages of Russia
+    
+    ```python
+    "rus_Cyrl", "ukr_Cyrl", "bel_Cyrl", "bul_Cyrl", "srp_Cyrl",
+    "mkd_Cyrl", "kaz_Cyrl", "mon_Cyrl", "tgk_Cyrl"
+    ```
+  </Tab>
+  
+  <Tab title="Arabic Scripts">
+    **Arabic Script (Arab)**
+    
+    Used for Arabic and related languages:
+    - Modern Standard Arabic and dialects
+    - Persian (Farsi), Dari, Pashto
+    - Urdu, Kurdish, Sindhi
+    - Various Central Asian and African languages
+    
+    ```python
+    "arb_Arab", "fas_Arab", "urd_Arab", "pus_Arab", "ckb_Arab",
+    "pbt_Arab", "azb_Arab", "kur_Arab"
+    ```
+  </Tab>
+  
+  <Tab title="Asian Scripts">
+    **Asian Scripts**
+    
+    Multiple script families from Asia:
+    
+    - **Devanagari (Deva)**: Hindi, Nepali, Marathi, Sanskrit
+    - **Bengali (Beng)**: Bengali, Assamese
+    - **Tamil (Taml)**: Tamil
+    - **Telugu (Telu)**: Telugu
+    - **Kannada (Knda)**: Kannada
+    - **Malayalam (Mlym)**: Malayalam
+    - **Gujarati (Gujr)**: Gujarati
+    - **Han (Hans/Hant)**: Chinese (Simplified/Traditional)
+    - **Hangul (Hang)**: Korean
+    - **Japanese (Jpan)**: Japanese
+    - **Thai (Thai)**: Thai, Lao variants
+    - **Myanmar (Mymr)**: Burmese, Mon
+    - **Khmer (Khmr)**: Khmer, Cham variants
+    
+    ```python
+    "hin_Deva", "ben_Beng", "tam_Taml", "tel_Telu", "kan_Knda",
+    "mal_Mlym", "guj_Gujr", "cmn_Hans", "cmn_Hant", "kor_Hang",
+    "jpn_Jpan", "tha_Thai", "mya_Mymr", "khm_Khmr"
+    ```
+  </Tab>
+  
+  <Tab title="Other Scripts">
+    **Additional Scripts**
+    
+    - **Ethiopic (Ethi)**: Amharic, Tigrinya
+    - **Hebrew (Hebr)**: Hebrew, Yiddish
+    - **Armenian (Armn)**: Armenian
+    - **Georgian (Geor)**: Georgian, Svan
+    - **Greek (Grek)**: Greek
+    - **Tibetan (Tibt)**: Tibetan, Dzongkha
+    - **Sinhala (Sinh)**: Sinhala
+    - **Lao (Laoo)**: Lao
+    - **Tifinagh (Tfng)**: Tamazight
+    - **Canadian Syllabics (Cans)**: Cree, Ojibwe
+    
+    ```python
+    "amh_Ethi", "heb_Hebr", "hye_Armn", "kat_Geor", "ell_Grek",
+    "bod_Tibt", "sin_Sinh", "lao_Laoo"
+    ```
+  </Tab>
+</Tabs>
+
+## Language Statistics
+
+<CardGroup cols={3}>
+  <Card title="Total Languages" icon="globe">
+    **1,682** language-script combinations
+  </Card>
+  <Card title="High Performance" icon="chart-line">
+    **78%** with CER below 10%
+  </Card>
+  <Card title="New Coverage" icon="star">
+    **Hundreds** of previously uncovered languages
+  </Card>
+</CardGroup>
+
+## Using Language IDs in Code
+
+Here's how to use language IDs with the inference pipeline:
+
+<CodeGroup>
+```python Single Language
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_7B_v2")
+
+# Transcribe English audio
+transcriptions = pipeline.transcribe(
+    ["/path/to/english_audio.wav"],
+    lang=["eng_Latn"],
+    batch_size=1
+)
+```
+
+```python Multiple Languages
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_Unlimited_7B_v2")
+
+audio_files = [
+    "/path/to/english.wav",
+    "/path/to/spanish.wav",
+    "/path/to/mandarin.wav",
+    "/path/to/arabic.wav"
+]
+
+languages = [
+    "eng_Latn",   # English
+    "spa_Latn",   # Spanish
+    "cmn_Hans",   # Mandarin (Simplified)
+    "arb_Arab"    # Arabic
+]
+
+transcriptions = pipeline.transcribe(
+    audio_files,
+    lang=languages,
+    batch_size=4
+)
+```
+
+```python Validation Helper
+from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+
+def validate_language_id(lang_id: str) -> bool:
+    """Check if a language ID is supported."""
+    if lang_id not in supported_langs:
+        print(f"Warning: {lang_id} is not supported")
+        print(f"Total supported languages: {len(supported_langs)}")
+        return False
+    return True
+
+# Usage
+lang = "eng_Latn"
+if validate_language_id(lang):
+    print(f"{lang} is valid!")
+```
+
+```python Auto-detect Script
+def get_languages_by_script(script: str) -> list:
+    """Get all languages for a specific script."""
+    from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+    return [lang for lang in supported_langs if lang.endswith(f"_{script}")]
+
+# Get all Latin script languages
+latin_langs = get_languages_by_script("Latn")
+print(f"Found {len(latin_langs)} Latin-script languages")
+
+# Get all Cyrillic script languages
+cyrillic_langs = get_languages_by_script("Cyrl")
+print(f"Found {len(cyrillic_langs)} Cyrillic-script languages")
+```
+</CodeGroup>
+
+## Performance by Language
+
+For detailed per-language performance metrics, see the complete results in the [per_language_results_table_7B_llm_asr.csv](https://github.com/facebookresearch/omnilingual-asr/blob/main/per_language_results_table_7B_llm_asr.csv) file.
+
+<Tip>
+The 7B LLM-ASR model achieves character error rates (CER) below 10% for 78% of supported languages.
+</Tip>
+
+## Language Families
+
+Omnilingual ASR covers languages from diverse language families:
+
+- **Indo-European**: Romance, Germanic, Slavic, Indo-Aryan, Iranian languages
+- **Sino-Tibetan**: Chinese varieties, Tibetan, Burmese
+- **Niger-Congo**: Bantu, Atlantic, Gur, Kwa languages
+- **Austronesian**: Indonesian, Filipino, Polynesian languages
+- **Afro-Asiatic**: Arabic, Amharic, Hausa, Hebrew
+- **Dravidian**: Tamil, Telugu, Kannada, Malayalam
+- **Turkic**: Turkish, Uzbek, Kazakh, Uyghur
+- **Uralic**: Finnish, Hungarian, Estonian
+- **Indigenous American**: Quechua, Guarani, Nahuatl, Aymara
+- **And many more...**
+
+## Finding Your Language
+
+To find the correct language ID:
+
+<Steps>
+  <Step title="Identify ISO 639-3 Code">
+    Look up your language's three-letter code at [ISO 639-3](https://iso639-3.sil.org/) or [Ethnologue](https://www.ethnologue.com/).
+    
+    Example: English = `eng`, Spanish = `spa`
+  </Step>
+  
+  <Step title="Determine Script">
+    Identify which script your text uses:
+    - Latin alphabet → `Latn`
+    - Cyrillic → `Cyrl`
+    - Arabic → `Arab`
+    - See [ISO 15924](https://unicode.org/iso15924/iso15924-codes.html) for complete list
+  </Step>
+  
+  <Step title="Combine and Validate">
+    Combine as `{language}_{script}` and check if it's in the supported list:
+    
+    ```python
+    from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs
+    
+    lang_id = "eng_Latn"
+    if lang_id in supported_langs:
+        print(f"✓ {lang_id} is supported")
+    ```
+  </Step>
+</Steps>
+
+## Complete Language List
+
+The complete list of 1,682 supported languages is available in the source code at:
+
+```
+src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py
+```
+
+A few example languages from the complete list:
+
+<Accordion title="View Sample Languages (A-Z)">
+```python
+# Sample of supported languages
+"aae_Latn",  # Arbëreshë Albanian
+"aka_Latn",  # Akan
+"amh_Ethi",  # Amharic
+"arb_Arab",  # Standard Arabic
+"asm_Beng",  # Assamese
+"bam_Latn",  # Bambara
+"ben_Beng",  # Bengali
+"bul_Cyrl",  # Bulgarian
+"cat_Latn",  # Catalan
+"ces_Latn",  # Czech
+"cmn_Hans",  # Mandarin Chinese (Simplified)
+"cmn_Hant",  # Mandarin Chinese (Traditional)
+"dan_Latn",  # Danish
+"deu_Latn",  # German
+"ell_Grek",  # Greek
+"eng_Latn",  # English
+"epo_Latn",  # Esperanto
+"eus_Latn",  # Basque
+"fas_Arab",  # Persian
+"fin_Latn",  # Finnish
+"fra_Latn",  # French
+"gle_Latn",  # Irish
+"glg_Latn",  # Galician
+"grn_Latn",  # Guarani
+"guj_Gujr",  # Gujarati
+"hat_Latn",  # Haitian Creole
+"hau_Latn",  # Hausa
+"heb_Hebr",  # Hebrew
+"hin_Deva",  # Hindi
+"hrv_Latn",  # Croatian
+"hun_Latn",  # Hungarian
+"hye_Armn",  # Armenian
+"ibo_Latn",  # Igbo
+"ind_Latn",  # Indonesian
+"isl_Latn",  # Icelandic
+"ita_Latn",  # Italian
+"jav_Latn",  # Javanese
+"jpn_Jpan",  # Japanese
+"kan_Knda",  # Kannada
+"kat_Geor",  # Georgian
+"kaz_Cyrl",  # Kazakh
+"khm_Khmr",  # Khmer
+"kin_Latn",  # Kinyarwanda
+"kor_Hang",  # Korean
+"lao_Laoo",  # Lao
+"lat_Latn",  # Latin
+"lav_Latn",  # Latvian
+"lit_Latn",  # Lithuanian
+"lug_Latn",  # Luganda
+"mal_Mlym",  # Malayalam
+"mar_Deva",  # Marathi
+"mkd_Cyrl",  # Macedonian
+"mlg_Latn",  # Malagasy
+"mon_Cyrl",  # Mongolian
+"mri_Latn",  # Maori
+"mya_Mymr",  # Burmese
+"nep_Deva",  # Nepali
+"nld_Latn",  # Dutch
+"nob_Latn",  # Norwegian Bokmål
+"nya_Latn",  # Chichewa
+"ori_Orya",  # Odia
+"pan_Guru",  # Punjabi
+"pol_Latn",  # Polish
+"por_Latn",  # Portuguese
+"pus_Arab",  # Pashto
+"ron_Latn",  # Romanian
+"rus_Cyrl",  # Russian
+"sin_Sinh",  # Sinhala
+"slk_Latn",  # Slovak
+"slv_Latn",  # Slovenian
+"sna_Latn",  # Shona
+"som_Latn",  # Somali
+"spa_Latn",  # Spanish
+"sqi_Latn",  # Albanian
+"srp_Cyrl",  # Serbian
+"sun_Latn",  # Sundanese
+"swe_Latn",  # Swedish
+"swh_Latn",  # Swahili
+"tam_Taml",  # Tamil
+"tel_Telu",  # Telugu
+"tgk_Cyrl",  # Tajik
+"tha_Thai",  # Thai
+"tir_Ethi",  # Tigrinya
+"tuk_Latn",  # Turkmen
+"tur_Latn",  # Turkish
+"ukr_Cyrl",  # Ukrainian
+"urd_Arab",  # Urdu
+"uzb_Latn",  # Uzbek
+"vie_Latn",  # Vietnamese
+"wol_Latn",  # Wolof
+"xho_Latn",  # Xhosa
+"ydd_Hebr",  # Yiddish
+"yor_Latn",  # Yoruba
+"zho_Hans",  # Chinese (Simplified)
+"zul_Latn",  # Zulu
+# ... and 1,600+ more!
+```
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Start transcribing with language codes
+  </Card>
+  <Card title="Language Conditioning" icon="language" href="/inference/language-conditioning">
+    Improve accuracy with language hints
+  </Card>
+  <Card title="Model Selection" icon="sliders" href="/models/model-selection">
+    Choose the right model for your languages
+  </Card>
+  <Card title="Zero-Shot Learning" icon="wand-magic-sparkle" href="/inference/zero-shot">
+    Add new languages with examples
+  </Card>
+</CardGroup>

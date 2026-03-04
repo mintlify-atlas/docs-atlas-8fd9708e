@@ -1,0 +1,556 @@
+---
+title: 'Zero-Shot Model'
+description: 'In-context learning for new languages with audio-text example pairs'
+---
+
+## Overview
+
+The Zero-Shot model (`omniASR_LLM_7B_ZS`) enables transcription of **unseen languages** through in-context learning. By providing 1-10 audio-text example pairs in the target language, the model learns the language's patterns on-the-fly without requiring fine-tuning or retraining.
+
+<Note>
+This model is particularly valuable for **low-resource languages** where labeled training data is scarce or unavailable. Simply provide a few example transcriptions to enable accurate speech recognition.
+</Note>
+
+## Model Specifications
+
+| Specification | Value |
+|---------------|-------|
+| **Model Name** | `omniASR_LLM_7B_ZS` |
+| **Parameters** | 7,810,900,608 |
+| **Download Size** | 30.0 GiB (FP32) |
+| **Inference VRAM** | ~20 GiB (BF16, batch=1, 30s audio + context) |
+| **Speed** | ~0.5x real-time (RTF: 0.194) |
+| **Max Audio Length** | 60 seconds (40s recommended, 30s for context examples) |
+| **Context Examples** | 1-10 required (internally normalized to 10) |
+| **Vocabulary Size** | 9,812 tokens |
+| **Tokenizer** | `omniASR_tokenizer_v1` |
+
+<Warning>
+**Important**: The zero-shot model is **NOT described in the original research paper**. It was released as part of the initial model suite but uses different training and architecture compared to LLM+LID models.
+</Warning>
+
+## Architecture
+
+The zero-shot model extends the LLM architecture with context example processing:
+
+```
+[Context Audio 1] → Wav2Vec2 Encoder → Projection ──┐
+[Context Text 1]  → Text Embedding ──────────────────┤
+                                                     │
+[Context Audio N] → Wav2Vec2 Encoder → Projection ──┤
+[Context Text N]  → Text Embedding ──────────────────┤
+                                                     ├──→ Llama Decoder → [Transcription]
+[Target Audio]    → Wav2Vec2 Encoder → Projection ──┘
+```
+
+### Key Differences from Standard LLM
+
+- **Context Slots**: Exactly 10 context example slots (filled via repetition if fewer than 10 provided)
+- **Input Grammar**: Special token structure for interleaving audio/text context pairs
+- **Training**: Exposed to diverse few-shot scenarios during training
+- **Validation**: Enforces exactly 10 context examples at inference
+
+## In-Context Learning
+
+### How It Works
+
+1. **Context Processing**: Each audio-text pair is encoded separately
+2. **Pattern Recognition**: Model identifies phoneme-grapheme mappings from examples
+3. **Application**: Learned patterns applied to target audio
+4. **Generation**: Transcription generated using autoregressive decoding
+
+The model learns:
+- **Phonetic patterns**: Sound-to-symbol mappings
+- **Orthographic conventions**: Writing system rules
+- **Language structure**: Basic grammatical patterns
+- **Domain specifics**: Vocabulary and terminology from examples
+
+### Example: New Language Transcription
+
+```python
+from omnilingual_asr.models.inference.pipeline import (
+    ASRInferencePipeline,
+    ContextExample
+)
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+
+# Provide context examples in target language (e.g., Ligurian)
+context_examples = [
+    ContextExample("/audio/ligurian1.wav", "A çittæ de Zena a l'é bea"),
+    ContextExample("/audio/ligurian2.wav", "O mæ o l'é in sciô porto"),
+    ContextExample("/audio/ligurian3.wav", "A cuperta a l'é russa"),
+]
+
+# Transcribe new audio using learned patterns
+test_audio = ["/audio/ligurian_new.wav"]
+transcriptions = pipeline.transcribe_with_context(
+    test_audio,
+    context_examples=[context_examples],
+    batch_size=1
+)
+
+print(transcriptions[0])
+```
+
+## Context Examples
+
+### Requirements
+
+<Accordion title="Context Example Requirements">
+  - **Count**: 1-10 examples (internally normalized to exactly 10)
+  - **Audio Length**: Up to 30 seconds per example (recommended)
+  - **Quality**: Clear audio with accurate transcriptions
+  - **Diversity**: Varied vocabulary and phonetic patterns
+  - **Consistency**: Same language/dialect across all examples
+  - **Script**: Consistent writing system (e.g., all Latin, all Cyrillic)
+</Accordion>
+
+### Example Repetition Logic
+
+If fewer than 10 examples are provided, they are **repeated sequentially** to fill all 10 slots:
+
+```python
+# From pipeline.py:120-134
+def repeat_to_max_len(lists, max_len=10):
+    """Repeats context examples to reach exactly max_len."""
+    def extend_list(lst):
+        repetitions = (max_len // len(lst)) + 1
+        return (lst * repetitions)[:max_len]
+    return [extend_list(lst) for lst in lists]
+
+# Example with 3 context samples:
+# [A, B, C] → [A, B, C, A, B, C, A, B, C, A]  (10 total)
+
+# Example with 7 context samples:
+# [A, B, C, D, E, F, G] → [A, B, C, D, E, F, G, A, B, C]  (10 total)
+```
+
+<Note>
+**Best Practice**: Provide 5-10 unique examples for optimal performance. More diverse examples generally lead to better transcription quality.
+</Note>
+
+### Example Quality Guidelines
+
+<CardGroup cols={2}>
+  <Card title="Good Context Examples" icon="circle-check">
+    - Clear, noise-free audio
+    - Accurate, verified transcriptions
+    - Diverse vocabulary coverage
+    - Natural speech patterns
+    - Consistent speaker quality
+    - Representative of target domain
+  </Card>
+  
+  <Card title="Avoid" icon="circle-xmark">
+    - Noisy or low-quality audio
+    - Transcription errors
+    - Repetitive content
+    - Mixed languages/dialects
+    - Inconsistent writing systems
+    - Very short samples (under 5s)
+  </Card>
+</CardGroup>
+
+## Usage
+
+### Basic Zero-Shot Transcription
+
+```python
+from omnilingual_asr.models.inference.pipeline import (
+    ASRInferencePipeline,
+    ContextExample
+)
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+
+# Define context examples (audio-text pairs)
+context = [
+    ContextExample("/path/to/context1.wav", "Hello world"),
+    ContextExample("/path/to/context2.wav", "How are you today"),
+    ContextExample("/path/to/context3.wav", "Nice to meet you"),
+]
+
+# Transcribe test audio
+test_audio = ["/path/to/test.wav"]
+transcriptions = pipeline.transcribe_with_context(
+    test_audio,
+    context_examples=[context],  # List of lists for batch processing
+    batch_size=1
+)
+
+print(transcriptions[0])
+```
+
+### Batch Processing with Different Contexts
+
+```python
+# Different context examples for each test audio
+test_audio = ["/test1.wav", "/test2.wav"]
+
+context_for_audio1 = [
+    ContextExample("/ctx1_1.wav", "First language example 1"),
+    ContextExample("/ctx1_2.wav", "First language example 2"),
+]
+
+context_for_audio2 = [
+    ContextExample("/ctx2_1.wav", "Second language example 1"),
+    ContextExample("/ctx2_2.wav", "Second language example 2"),
+]
+
+transcriptions = pipeline.transcribe_with_context(
+    test_audio,
+    context_examples=[context_for_audio1, context_for_audio2],
+    batch_size=2
+)
+```
+
+### Using Shared Context for Multiple Files
+
+```python
+# Same context examples for all test files
+shared_context = [
+    ContextExample("/shared1.wav", "Example one"),
+    ContextExample("/shared2.wav", "Example two"),
+    ContextExample("/shared3.wav", "Example three"),
+    ContextExample("/shared4.wav", "Example four"),
+    ContextExample("/shared5.wav", "Example five"),
+]
+
+test_audio = ["/test1.wav", "/test2.wav", "/test3.wav"]
+
+# Repeat context for each test file
+context_list = [shared_context] * len(test_audio)
+
+transcriptions = pipeline.transcribe_with_context(
+    test_audio,
+    context_examples=context_list,
+    batch_size=1  # Process one at a time due to memory
+)
+```
+
+### Multiple Input Formats
+
+```python
+import torch
+import numpy as np
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+
+# Context examples with different input formats
+context = [
+    # File path
+    ContextExample("/path/to/audio1.wav", "Transcription one"),
+    
+    # Pre-decoded audio dictionary
+    ContextExample(
+        {"waveform": torch.randn(16000 * 10), "sample_rate": 16000},
+        "Transcription two"
+    ),
+    
+    # Raw bytes
+    ContextExample(
+        open("/path/to/audio3.flac", "rb").read(),
+        "Transcription three"
+    ),
+]
+
+test_audio = ["/path/to/test.wav"]
+transcriptions = pipeline.transcribe_with_context(
+    test_audio,
+    context_examples=[context],
+    batch_size=1
+)
+```
+
+## Input Format Specification
+
+The zero-shot model uses a specialized batch format:
+
+```python
+# From inference/README.md:196-215
+batch = Seq2SeqBatch(
+    source_seqs=audio_tensor,           # [BS, T_audio] - target audio
+    source_seq_lens=audio_lengths,      # [BS] - actual lengths
+    target_seqs=text_tensor,            # [BS, T_text] - target text
+    target_seq_lens=text_lengths,       # [BS] - text lengths
+    example={
+        "context_audio": [              # List[Dict] - BS items
+            {
+                "seqs": context_audio_1,     # [10, T_ctx_audio] - 10 examples
+                "seq_lens": [audio_len_1, ...],  # [10] - lengths
+            },
+            ...
+        ],
+        "context_text": [               # List[Dict] - BS items
+            {
+                "seqs": context_text_1,      # [10, T_ctx_text]
+                "seq_lens": [text_len_1, ...],   # [10]
+            },
+            ...
+        ]
+    }
+)
+```
+
+<Warning>
+**Batch Validation**: The model validates that `context_audio` and `context_text` contain exactly 10 examples. This is enforced in `ensure_valid_forward_inputs()` at every forward pass.
+</Warning>
+
+## Performance Characteristics
+
+### Speed
+
+- **RTF**: 0.194 (~0.5x real-time)
+- **Slowdown**: ~2x slower than standard LLM models due to context processing
+- **Recommended Batch Size**: 1 (large memory footprint with 10 context examples)
+
+### Memory Usage
+
+```python
+# Memory breakdown (approximate)
+# - Target audio: ~2 GiB
+# - Context audio (10 examples): ~10 GiB
+# - Context text embeddings: ~2 GiB
+# - Model parameters: ~15 GiB
+# - Activation memory: ~3 GiB
+# Total: ~20 GiB VRAM (BF16 precision)
+```
+
+<Note>
+Zero-shot model requires **more VRAM** than standard LLM models due to processing 10 context examples alongside target audio.
+</Note>
+
+### Accuracy Factors
+
+| Factor | Impact on Accuracy |
+|--------|-------------------|
+| Number of examples (1 vs 10) | High - more examples generally better |
+| Example quality | High - clear audio and accurate text crucial |
+| Example diversity | Medium - varied content helps generalization |
+| Example length | Low - 10-30s recommended, diminishing returns beyond |
+| Language similarity to training | Medium - closer languages may perform better |
+
+## Limitations
+
+<Accordion title="Zero-Shot Model Limitations">
+  - **VRAM Requirements**: ~20 GiB for BF16 inference (higher than standard models)
+  - **Speed**: ~2x slower than standard LLM models
+  - **Audio Length**: 40-60 seconds max (30s recommended for context examples)
+  - **Batch Size**: Limited to 1-2 due to memory constraints
+  - **Context Requirement**: Must provide context examples (cannot use without)
+  - **Fixed Slots**: Always uses exactly 10 context slots (may repeat examples)
+  - **No Streaming**: Current implementation does not support streaming
+</Accordion>
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Low-Resource Languages" icon="globe">
+    Transcribe languages with limited or no existing ASR support by providing just a few example pairs.
+  </Card>
+  
+  <Card title="Domain Adaptation" icon="building">
+    Adapt to specialized vocabulary (medical, legal, technical) using domain-specific examples.
+  </Card>
+  
+  <Card title="Dialectal Variation" icon="comments">
+    Handle regional dialects by providing examples in the specific dialect.
+  </Card>
+  
+  <Card title="New Writing Systems" icon="language">
+    Support languages with unique scripts by demonstrating phoneme-grapheme mappings.
+  </Card>
+  
+  <Card title="Quick Prototyping" icon="flask">
+    Rapidly test ASR capabilities for new languages without training infrastructure.
+  </Card>
+  
+  <Card title="Research Applications" icon="microscope">
+    Investigate cross-lingual transfer and few-shot learning in speech recognition.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### Optimal Number of Examples
+
+```python
+# Recommended: 5-10 diverse examples
+context = [
+    ContextExample("/ex1.wav", "Varied sentence one"),
+    ContextExample("/ex2.wav", "Different content two"),
+    ContextExample("/ex3.wav", "Another example three"),
+    ContextExample("/ex4.wav", "Fourth distinct sample"),
+    ContextExample("/ex5.wav", "Fifth unique instance"),
+    ContextExample("/ex6.wav", "Sixth diverse example"),
+    ContextExample("/ex7.wav", "Seventh varied sample"),
+]
+
+# Model will use: [1,2,3,4,5,6,7,1,2,3] (repeated to 10)
+```
+
+### Example Selection Strategy
+
+1. **Phonetic Coverage**: Include examples with diverse phonemes
+2. **Vocabulary Diversity**: Use different words and phrases
+3. **Natural Speech**: Prefer conversational over read speech
+4. **Clear Audio**: Ensure high-quality recordings
+5. **Accurate Transcriptions**: Verify all text is correct
+6. **Consistent Style**: Maintain uniform transcription conventions
+
+### Memory Optimization
+
+```python
+# Use FP16 for lower memory usage (if supported)
+import torch
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_LLM_7B_ZS",
+    dtype=torch.float16  # Reduce from BF16 if needed
+)
+
+# Process one at a time
+for audio_file in audio_files:
+    result = pipeline.transcribe_with_context(
+        [audio_file],
+        context_examples=[shared_context],
+        batch_size=1
+    )
+    print(result[0])
+    
+    # Clear cache between samples
+    torch.cuda.empty_cache()
+```
+
+## Comparison with Other Models
+
+| Feature | Zero-Shot (7B ZS) | Standard LLM (7B v2) | CTC (7B v2) |
+|---------|-------------------|----------------------|-------------|
+| **Context Examples** | Required (1-10) | Not supported | Not supported |
+| **Language Conditioning** | Via examples | Optional lang ID | None |
+| **Unseen Languages** | Yes | Limited | No |
+| **Speed (RTF)** | 0.194 (~0.5x) | 0.092 (~1x) | 0.006 (16x) |
+| **VRAM** | ~20 GiB | ~17 GiB | ~15 GiB |
+| **Max Audio Length** | 60s | 40s | 40s |
+| **Use Case** | New languages | Known languages | High throughput |
+
+## Advanced Usage
+
+### Programmatic Context Generation
+
+```python
+from omnilingual_asr.models.inference.pipeline import ContextExample
+import pandas as pd
+
+# Load context examples from dataset
+df = pd.read_csv("context_dataset.csv")
+context = [
+    ContextExample(row["audio_path"], row["transcription"])
+    for _, row in df.head(10).iterrows()
+]
+
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+transcriptions = pipeline.transcribe_with_context(
+    test_audio,
+    context_examples=[context],
+    batch_size=1
+)
+```
+
+### Evaluation with Context
+
+```python
+from datasets import load_dataset
+
+# Load test dataset
+test_set = load_dataset("test_corpus", split="test")
+
+# Use train split as context
+train_samples = load_dataset("test_corpus", split="train").select(range(10))
+
+context = [
+    ContextExample(
+        {"waveform": x["audio"]["array"], "sample_rate": x["audio"]["sampling_rate"]},
+        x["transcription"]
+    )
+    for x in train_samples
+]
+
+# Evaluate on test set
+pipeline = ASRInferencePipeline(model_card="omniASR_LLM_7B_ZS")
+
+for test_sample in test_set:
+    test_audio = [{
+        "waveform": test_sample["audio"]["array"],
+        "sample_rate": test_sample["audio"]["sampling_rate"]
+    }]
+    
+    pred = pipeline.transcribe_with_context(
+        test_audio,
+        context_examples=[context],
+        batch_size=1
+    )
+    
+    print(f"Ground truth: {test_sample['transcription']}")
+    print(f"Prediction:   {pred[0]}\n")
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Must use .transcribe_with_context()">
+    The zero-shot model does not support `.transcribe()`. Always use `.transcribe_with_context()` with at least one context example.
+    
+    ```python
+    # ✗ Wrong
+    pipeline.transcribe(audio_files)
+    
+    # ✓ Correct
+    pipeline.transcribe_with_context(audio_files, context_examples=[context])
+    ```
+  </Accordion>
+  
+  <Accordion title="Out of Memory Error">
+    Zero-shot model requires ~20 GiB VRAM. Try:
+    - Reduce batch size to 1
+    - Use shorter context examples (under 20s each)
+    - Clear CUDA cache: `torch.cuda.empty_cache()`
+    - Use gradient checkpointing (if training)
+  </Accordion>
+  
+  <Accordion title="Poor Transcription Quality">
+    Improve accuracy by:
+    - Providing more context examples (5-10 recommended)
+    - Ensuring context examples have accurate transcriptions
+    - Using clear, high-quality audio for context
+    - Matching context examples to target domain/dialect
+    - Verifying consistent writing system across all examples
+  </Accordion>
+  
+  <Accordion title="Slow Inference Speed">
+    Zero-shot model is inherently slower due to context processing. To optimize:
+    - Use batch_size=1 (higher batches don't help due to memory)
+    - Consider standard LLM models if language is supported
+    - Process context examples once, cache embeddings (advanced)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="LLM Models" icon="brain" href="/models/llm-models">
+    Explore standard LLM models with language conditioning
+  </Card>
+  
+  <Card title="Model Specifications" icon="table" href="/models/model-specifications">
+    Compare all model variants with detailed specs
+  </Card>
+  
+  <Card title="Inference Guide" icon="book" href="/inference/overview">
+    Complete guide to transcription workflows
+  </Card>
+  
+  <Card title="Supported Languages" icon="earth-americas" href="/getting-started/supported-languages">
+    View the complete list of 1600+ languages
+  </Card>
+</CardGroup>

@@ -1,0 +1,301 @@
+---
+title: 'CTC Models'
+description: 'Fast parallel speech recognition with CTC-based models'
+---
+
+## Overview
+
+The CTC (Connectionist Temporal Classification) models provide high-speed parallel generation for speech recognition across 1,600+ languages. Built on the Wav2Vec2 encoder architecture, these models project audio embeddings directly to vocabulary logits using a simple linear projection layer, enabling non-autoregressive parallel prediction.
+
+<Note>
+CTC models are ideal for **on-device transcription tasks** due to their parallel generation capabilities, resulting in significantly faster throughput compared to autoregressive LLM models (16x-96x faster).
+</Note>
+
+## Architecture
+
+The CTC model follows a straightforward encoder-only architecture:
+
+```
+[Audio 16kHz] → Wav2Vec2 Feature Extractor → Wav2Vec2 Encoder → Linear Projection → [Vocab Logits]
+                (CNN downsampling ~320x)       (Transformer)     (1024/1280/2048-dim)
+```
+
+### Key Components
+
+- **Wav2Vec2 Feature Extractor**: CNN-based module that downsamples raw 16kHz audio by ~320x
+- **Wav2Vec2 Encoder**: Transformer encoder producing contextualized audio embeddings
+- **Linear Projection**: Simple projection layer mapping embeddings to vocabulary logits
+- **CTC Alignment**: Parallel prediction with CTC decoding for frame-to-token alignment
+
+## Model Variants
+
+Omnilingual ASR offers CTC models in four sizes, each with v1 and v2 versions:
+
+<Tabs>
+  <Tab title="300M">
+    **omniASR_CTC_300M / omniASR_CTC_300M_v2**
+    
+    - **Parameters**: 325,494,996
+    - **Download Size**: 1.3 GiB (FP32)
+    - **Inference VRAM**: ~2 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: 96x faster than real-time (RTF: 0.001)
+    - **Embedding Dimension**: 1024
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Use Case**: Lightweight deployment, resource-constrained environments
+  </Tab>
+  
+  <Tab title="1B">
+    **omniASR_CTC_1B / omniASR_CTC_1B_v2**
+    
+    - **Parameters**: 975,065,300
+    - **Download Size**: 3.7 GiB (FP32)
+    - **Inference VRAM**: ~3 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: 48x faster than real-time (RTF: 0.002)
+    - **Embedding Dimension**: 1280
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Use Case**: Balanced performance and efficiency
+  </Tab>
+  
+  <Tab title="3B">
+    **omniASR_CTC_3B / omniASR_CTC_3B_v2**
+    
+    - **Parameters**: 3,080,423,636
+    - **Download Size**: 12.0 GiB (FP32)
+    - **Inference VRAM**: ~8 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: 32x faster than real-time (RTF: 0.003)
+    - **Embedding Dimension**: 2048
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Use Case**: Higher accuracy requirements with good speed
+  </Tab>
+  
+  <Tab title="7B">
+    **omniASR_CTC_7B / omniASR_CTC_7B_v2**
+    
+    - **Parameters**: 6,504,786,132
+    - **Download Size**: 25.0 GiB (FP32)
+    - **Inference VRAM**: ~15 GiB (BF16, batch=1, 30s audio)
+    - **Speed**: 16x faster than real-time (RTF: 0.006)
+    - **Embedding Dimension**: 2048
+    - **Vocabulary Size**: 9,812 (v1) / 10,288 (v2)
+    - **Use Case**: Maximum accuracy for production deployments
+  </Tab>
+</Tabs>
+
+<Note>
+**v2 Models**: Released in December 2025 with improved accuracy (CER) compared to v1 models. The v2 models use an expanded vocabulary (10,288 tokens) and updated training data.
+</Note>
+
+## Usage
+
+### Basic Transcription
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Initialize pipeline with CTC model
+pipeline = ASRInferencePipeline(model_card="omniASR_CTC_3B_v2")
+
+# Transcribe audio files
+audio_files = ["/path/to/audio1.flac", "/path/to/audio2.wav"]
+transcriptions = pipeline.transcribe(audio_files, batch_size=2)
+
+for file_path, text in zip(audio_files, transcriptions):
+    print(f"{file_path}: {text}")
+```
+
+### Batch Processing for High Throughput
+
+```python
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+# Use larger batch sizes to maximize parallel processing
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_CTC_7B_v2",
+    device="cuda",
+    dtype=torch.bfloat16
+)
+
+# Process large dataset efficiently
+audio_dataset = [...] # List of audio paths
+batch_size = 8  # Adjust based on available VRAM
+
+transcriptions = pipeline.transcribe(audio_dataset, batch_size=batch_size)
+```
+
+### Using Pre-decoded Audio
+
+```python
+import torch
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(model_card="omniASR_CTC_1B_v2")
+
+# Pass pre-decoded audio dictionaries
+audio_data = [
+    {"waveform": torch.randn(16000 * 5), "sample_rate": 16000},
+    {"waveform": torch.randn(16000 * 10), "sample_rate": 16000}
+]
+
+transcriptions = pipeline.transcribe(audio_data, batch_size=2)
+```
+
+## Parallel Generation
+
+Unlike autoregressive models that generate tokens sequentially, CTC models predict all tokens in parallel:
+
+1. **Audio Encoding**: The Wav2Vec2 encoder processes the entire audio sequence, producing frame-level embeddings
+2. **Parallel Projection**: Each frame embedding is independently projected to vocabulary logits
+3. **CTC Decoding**: The CTC algorithm handles frame-to-token alignment, removing duplicates and blank tokens
+
+```python
+# Internal CTC decoding (simplified from pipeline.py:310-331)
+pred_ids = torch.argmax(logits, dim=-1)  # Parallel argmax over all frames
+
+# Remove consecutive duplicates (CTC decoding)
+mask = torch.ones(seq.shape[0], dtype=torch.bool)
+mask[1:] = seq[1:] != seq[:-1]
+decoded_ids = seq[mask]
+
+transcription = token_decoder(decoded_ids)
+```
+
+This parallel approach enables the dramatic speed improvements (16x-96x faster than real-time).
+
+## Input Requirements
+
+<Warning>
+**Audio Length Limit**: CTC models currently accept only audio files **shorter than 40 seconds**. For longer audio, split into segments or use the LLM Unlimited variants.
+</Warning>
+
+### Audio Format Support
+
+The pipeline automatically handles:
+- **Resampling**: Any sample rate → 16kHz
+- **Channel Conversion**: Stereo/multi-channel → Mono
+- **Normalization**: Audio amplitude normalization
+- **Format Decoding**: WAV, FLAC, MP3, and other common formats
+
+### Input Types
+
+```python
+# File paths (strings or Path objects)
+audio = ["/path/to/file1.wav", "/path/to/file2.flac"]
+
+# Raw bytes
+with open("audio.wav", "rb") as f:
+    audio = [f.read()]
+
+# NumPy arrays (int8/uint8)
+import numpy as np
+audio = [np.frombuffer(audio_bytes, dtype=np.int8)]
+
+# Pre-decoded dictionaries
+audio = [{"waveform": tensor, "sample_rate": 16000}]
+```
+
+## Limitations
+
+<Accordion title="CTC Model Limitations">
+  - **No Language Conditioning**: CTC models do not support language ID conditioning (the `lang` parameter is ignored)
+  - **No Context Examples**: Zero-shot learning with context examples is not available
+  - **Fixed Vocabulary**: Cannot adapt to new tokens or writing systems without retraining
+  - **No Punctuation**: Models output spoken-form text without punctuation or capitalization
+  - **40-Second Limit**: Maximum audio length capped at 40 seconds per sample
+</Accordion>
+
+## Performance Comparison
+
+| Model | Speed (RTF) | Relative to LLM | VRAM (30s) | Best For |
+|-------|-------------|-----------------|------------|----------|
+| CTC 300M | 0.001 | 96x faster | ~2 GiB | Edge devices, mobile |
+| CTC 1B | 0.002 | 48x faster | ~3 GiB | Balanced deployments |
+| CTC 3B | 0.003 | 32x faster | ~8 GiB | Production servers |
+| CTC 7B | 0.006 | 16x faster | ~15 GiB | Maximum accuracy |
+| LLM 7B | 0.092 | 1x (baseline) | ~17 GiB | Language conditioning |
+
+<Note>
+**RTF (Real-Time Factor)**: A value of 0.001 means the model processes 1 second of audio in 0.001 seconds (1000x real-time).
+</Note>
+
+## Advanced Configuration
+
+### Custom Device and Dtype
+
+```python
+import torch
+from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
+
+pipeline = ASRInferencePipeline(
+    model_card="omniASR_CTC_7B_v2",
+    device="cuda:0",  # Specific GPU
+    dtype=torch.float16  # FP16 for faster inference
+)
+```
+
+### Memory Optimization
+
+For limited VRAM environments:
+
+```python
+# Use smaller model
+pipeline = ASRInferencePipeline(model_card="omniASR_CTC_300M_v2")
+
+# Reduce batch size
+transcriptions = pipeline.transcribe(audio_files, batch_size=1)
+
+# Process in chunks
+for chunk in chunks(audio_files, chunk_size=10):
+    results = pipeline.transcribe(chunk, batch_size=2)
+```
+
+## Model Selection Guide
+
+<CardGroup cols={2}>
+  <Card title="Choose 300M if..." icon="microchip">
+    - Deploying on edge devices
+    - VRAM is limited (under 4 GiB)
+    - Maximum speed is critical
+    - Accuracy requirements are moderate
+  </Card>
+  
+  <Card title="Choose 1B if..." icon="gauge-high">
+    - Balancing speed and accuracy
+    - Running on consumer GPUs
+    - Processing large volumes
+    - VRAM available: 4-8 GiB
+  </Card>
+  
+  <Card title="Choose 3B if..." icon="trophy">
+    - Production deployments
+    - High accuracy needed
+    - Server-grade GPUs available
+    - VRAM available: 8-16 GiB
+  </Card>
+  
+  <Card title="Choose 7B if..." icon="crown">
+    - Maximum accuracy required
+    - Research applications
+    - Large GPU available (A100/H100)
+    - VRAM available: 16+ GiB
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="LLM Models" icon="brain" href="/models/llm-models">
+    Explore autoregressive models with language conditioning
+  </Card>
+  
+  <Card title="Model Specifications" icon="table" href="/models/model-specifications">
+    Compare all models with detailed specifications
+  </Card>
+  
+  <Card title="Zero-Shot" icon="wand-magic-sparkles" href="/models/zero-shot">
+    Learn about in-context learning for new languages
+  </Card>
+  
+  <Card title="Inference Guide" icon="play" href="/inference/overview">
+    Comprehensive guide to running inference
+  </Card>
+</CardGroup>

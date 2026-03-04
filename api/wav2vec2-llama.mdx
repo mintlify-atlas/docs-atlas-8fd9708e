@@ -1,0 +1,368 @@
+---
+title: 'Wav2Vec2LlamaModel'
+description: 'Wav2Vec2 encoder with Llama decoder for ASR'
+---
+
+## Overview
+
+`Wav2Vec2LlamaModel` combines a Wav2Vec2 encoder with a Llama decoder for automatic speech recognition. It supports three model variants:
+
+- **LLM_ASR**: Standard encoder-decoder ASR
+- **LLM_ASR_LID**: ASR with language identification conditioning
+- **ZERO_SHOT**: Zero-shot learning with context examples
+
+## Constructor
+
+```python
+Wav2Vec2LlamaModel(
+    model_type: ModelType,
+    model_dim: int,
+    encoder_frontend: Wav2Vec2Frontend,
+    encoder: TransformerEncoder,
+    encoder_proj: nn.Module,
+    text_frontend: StandardEmbedding,
+    llama_decoder: TransformerLMDecoder,
+    final_proj: nn.Module,
+    target_vocab_info: VocabularyInfo,
+    *,
+    masker: Wav2Vec2Masker | None = None,
+    max_generation_length: int = 8192,
+    encoder_stacking: int = 1,
+    lang_embeddings_p: float = 0.0,
+    language_column_name: str = "lang",
+    lang_embeddings: StandardEmbedding | None = None,
+    lang_mapping: dict[str, int] | None = None,
+    context_text_only: bool = False,
+    beam_search_config: Wav2Vec2LlamaBeamSearchConfig = ...,
+    streaming_config: Wav2Vec2LlamaStreamingConfig = ...,
+    text_encoder: TokenEncoder | None = None,
+    n_context_examples: int = 0,
+    seed: int = 42
+)
+```
+
+### Core Parameters
+
+<ParamField path="model_type" type="ModelType" required>
+  Model variant:
+  - `ModelType.LLM_ASR`: Standard ASR
+  - `ModelType.LLM_ASR_LID`: ASR with language ID
+  - `ModelType.ZERO_SHOT`: Zero-shot with context
+</ParamField>
+
+<ParamField path="model_dim" type="int" required>
+  Model dimension of the transformer decoder.
+</ParamField>
+
+<ParamField path="encoder_frontend" type="Wav2Vec2Frontend" required>
+  Wav2Vec2 encoder frontend for feature extraction.
+</ParamField>
+
+<ParamField path="encoder" type="TransformerEncoder" required>
+  Wav2Vec2 encoder.
+</ParamField>
+
+<ParamField path="encoder_proj" type="nn.Module" required>
+  Projection layer from encoder outputs to decoder dimension.
+</ParamField>
+
+<ParamField path="text_frontend" type="StandardEmbedding" required>
+  Text token embedding module.
+</ParamField>
+
+<ParamField path="llama_decoder" type="TransformerLMDecoder" required>
+  Llama decoder-only model.
+</ParamField>
+
+<ParamField path="final_proj" type="nn.Module" required>
+  Final projection layer from decoder to vocabulary logits.
+</ParamField>
+
+<ParamField path="target_vocab_info" type="VocabularyInfo" required>
+  Vocabulary information including size and special token indices.
+</ParamField>
+
+### Optional Parameters
+
+<ParamField path="masker" type="Wav2Vec2Masker | None" default="None">
+  Feature masker for Wav2Vec2 (used during training).
+</ParamField>
+
+<ParamField path="max_generation_length" type="int" default="8192">
+  Maximum length of generated sequences in decoder.
+</ParamField>
+
+<ParamField path="encoder_stacking" type="int" default="1">
+  Number of encoder frames to stack before feeding to decoder (for compression).
+</ParamField>
+
+<ParamField path="lang_embeddings_p" type="float" default="0.0">
+  Probability of using language embeddings (for LID model). Dropout probability during training.
+</ParamField>
+
+<ParamField path="language_column_name" type="str" default="lang">
+  Name of the batch metadata field containing language information.
+</ParamField>
+
+<ParamField path="lang_embeddings" type="StandardEmbedding | None" default="None">
+  Language embedding module (required for LID model).
+</ParamField>
+
+<ParamField path="lang_mapping" type="dict[str, int] | None" default="None">
+  Mapping from language codes to embedding indices.
+</ParamField>
+
+<ParamField path="context_text_only" type="bool" default="False">
+  Whether to use text-only context (instead of audio+text).
+</ParamField>
+
+<ParamField path="beam_search_config" type="Wav2Vec2LlamaBeamSearchConfig" default="Wav2Vec2LlamaBeamSearchConfig()">
+  Beam search configuration for decoding.
+</ParamField>
+
+<ParamField path="streaming_config" type="Wav2Vec2LlamaStreamingConfig" default="Wav2Vec2LlamaStreamingConfig()">
+  Streaming configuration for >30s audio.
+</ParamField>
+
+<ParamField path="text_encoder" type="TokenEncoder | None" default="None">
+  Text encoder for streaming mode.
+</ParamField>
+
+<ParamField path="n_context_examples" type="int" default="0">
+  Number of context examples for zero-shot model.
+</ParamField>
+
+<ParamField path="seed" type="int" default="42">
+  Random seed for reproducibility.
+</ParamField>
+
+<Note>
+  Models are typically loaded using `load_model("omniASR_LLM_7B")` rather than constructed directly.
+</Note>
+
+## Forward Pass
+
+```python
+model.forward(
+    batch: Seq2SeqBatch,
+    return_logits: bool = False,
+    return_decoder_inputs: bool = False
+) -> Tensor | Tuple[...]
+```
+
+<ParamField path="batch" type="Seq2SeqBatch" required>
+  Input batch containing source audio and target text.
+</ParamField>
+
+<ParamField path="return_logits" type="bool" default="False">
+  Whether to return logits along with loss (for debugging).
+</ParamField>
+
+<ParamField path="return_decoder_inputs" type="bool" default="False">
+  Whether to return decoder inputs for beam search (inference mode).
+</ParamField>
+
+### Return Values
+
+<Expandable title="Default (return_logits=False, return_decoder_inputs=False)">
+  <ResponseField name="loss" type="Tensor">
+    Cross-entropy loss averaged per token, multiplied by batch size.
+  </ResponseField>
+</Expandable>
+
+<Expandable title="return_decoder_inputs=True">
+  <ResponseField name="decoder_context" type="List[Tensor]">
+    Context inputs for beam search decoder.
+  </ResponseField>
+  <ResponseField name="decoder_context_seq_lens" type="List[List[int]]">
+    Sequence lengths for each context segment.
+  </ResponseField>
+  <ResponseField name="audio_embeddings" type="List[ModalityInput]">
+    Embedded audio representations.
+  </ResponseField>
+</Expandable>
+
+<Expandable title="return_logits=True">
+  <ResponseField name="loss" type="Tensor">
+    Cross-entropy loss.
+  </ResponseField>
+  <ResponseField name="logits" type="Tensor">
+    Model logits [batch_size, seq_len, vocab_size].
+  </ResponseField>
+  <ResponseField name="decoder_inputs_layout" type="BatchLayout">
+    Layout information for decoder inputs.
+  </ResponseField>
+  <ResponseField name="decoder_context_inputs" type="List[Tensor]">
+    Context inputs.
+  </ResponseField>
+  <ResponseField name="decoder_context_seq_lens" type="List[List[int]]">
+    Context sequence lengths.
+  </ResponseField>
+  <ResponseField name="audio_embeddings" type="List[ModalityInput]">
+    Audio embeddings.
+  </ResponseField>
+</Expandable>
+
+## Model Architectures
+
+### Standard LLM-ASR
+
+Input syntax:
+```
+audio [<lid> lang_id] <bos> text <eos>
+```
+
+```python
+from fairseq2.models.hub import load_model
+
+model = load_model("omniASR_LLM_7B")
+# ModelType.LLM_ASR_LID with language conditioning
+```
+
+### Zero-Shot Model
+
+Input syntax:
+```
+<context>
+  (<context_example> ctx_audio <bos> ctx_text <eos> </context_example>) x N
+</context>
+target_audio <bos> target_text <eos>
+```
+
+```python
+model = load_model("omniASR_LLM_7B_ZS")
+# ModelType.ZERO_SHOT with n_context_examples=10
+```
+
+### Streaming Model
+
+Input syntax:
+```
+[lang <lang>]
+(audio_segment_i <segment_marker> <bos> text_i <eos>) x N
+```
+
+Segment markers:
+- `<regular_segment>`: For intermediate segments
+- `<last_segment>`: For final segment
+
+```python
+model = load_model("omniASR_LLM_7B_Unlimited")
+# ModelType.LLM_ASR_LID with streaming_config.is_streaming=True
+```
+
+## Embedding Methods
+
+### embed_audio
+
+```python
+def embed_audio(
+    seqs: Tensor,
+    seq_lens: List[int]
+) -> Tuple[Tensor, List[int]]
+```
+
+Runs encoder and frontend on audio tensors.
+
+<ParamField path="seqs" type="Tensor" required>
+  Audio waveforms [batch_size, time].
+</ParamField>
+
+<ParamField path="seq_lens" type="List[int]" required>
+  Actual sequence lengths.
+</ParamField>
+
+<ResponseField name="embedded_seqs" type="Tensor">
+  Embedded audio [batch_size, reduced_time, model_dim].
+</ResponseField>
+
+<ResponseField name="embedded_seq_lens" type="List[int]">
+  Reduced sequence lengths after encoder.
+</ResponseField>
+
+### embed_text
+
+```python
+def embed_text(
+    seqs: Tensor,
+    dtype: torch.dtype
+) -> Tensor
+```
+
+Embeds text tokens.
+
+<ParamField path="seqs" type="Tensor" required>
+  Text token indices [batch_size, seq_len].
+</ParamField>
+
+<ParamField path="dtype" type="torch.dtype" required>
+  Target dtype for embeddings.
+</ParamField>
+
+<ResponseField name="embedded" type="Tensor">
+  Text embeddings [batch_size, seq_len, model_dim].
+</ResponseField>
+
+## Training Example
+
+```python
+import torch
+from fairseq2.models.hub import load_model
+from fairseq2.datasets import Seq2SeqBatch
+
+# Load model
+model = load_model("omniASR_LLM_7B")
+model.train()
+
+# Forward pass (training)
+loss = model(batch)
+loss.backward()
+
+# Forward pass with logits (debugging)
+loss, logits, *_ = model(batch, return_logits=True)
+print(f"Loss: {loss.item()}, Logits shape: {logits.shape}")
+```
+
+## Inference Example
+
+```python
+from omnilingual_asr.models.inference import ASRInferencePipeline
+
+# Use high-level pipeline (recommended)
+pipeline = ASRInferencePipeline("omniASR_LLM_7B")
+transcriptions = pipeline.transcribe(["audio.wav"])
+
+# Low-level model access
+model = load_model("omniASR_LLM_7B")
+model.eval()
+
+# Get decoder inputs
+decoder_context, context_lens, audio_emb = model(
+    batch,
+    return_decoder_inputs=True
+)
+
+# Use beam search for generation
+# (typically done by ASRInferencePipeline)
+```
+
+## Model Variants
+
+| Model Card | Type | Parameters | Features |
+|------------|------|------------|----------|
+| `omniASR_LLM_300M` | LLM_ASR_LID | 300M | Language conditioning |
+| `omniASR_LLM_1B` | LLM_ASR_LID | 1B | Language conditioning |
+| `omniASR_LLM_3B` | LLM_ASR_LID | 3B | Language conditioning |
+| `omniASR_LLM_7B` | LLM_ASR_LID | 7B | Language conditioning |
+| `omniASR_LLM_7B_ZS` | ZERO_SHOT | 7B | Zero-shot learning |
+| `omniASR_LLM_7B_Unlimited` | LLM_ASR_LID | 7B | Streaming (unlimited length) |
+
+## See Also
+
+- [ASRInferencePipeline](/api/inference-pipeline) - High-level inference API
+- [Wav2Vec2LlamaConfig](/api/model-configs) - Model configuration
+- [Wav2Vec2LlamaBeamSearchConfig](/api/model-configs#beam-search-config) - Beam search settings
+
+## Source Reference
+
+See implementation at `src/omnilingual_asr/models/wav2vec2_llama/model.py:43`

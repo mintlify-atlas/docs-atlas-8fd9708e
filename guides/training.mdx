@@ -1,0 +1,805 @@
+---
+title: Training Guide
+description: Learn how to train and fine-tune Omnilingual ASR models
+icon: graduation-cap
+---
+
+Comprehensive guide to training CTC and LLM models using fairseq2 recipes with real-world configurations and best practices.
+
+## Overview
+
+Omnilingual ASR provides pre-configured fairseq2 recipes that combine models, datasets, and hyperparameters into reproducible training workflows.
+
+<Note>
+  Recipes are training workflows you can run with a single command. They handle data loading, model initialization, optimization, and checkpointing automatically.
+</Note>
+
+**Available Recipes:**
+
+<CardGroup cols={2}>
+  <Card title="Training Recipe" icon="dumbbell">
+    `wav2vec2.asr.recipe`
+    
+    Supports CTC and LLM training from scratch or fine-tuning from checkpoints.
+  </Card>
+  
+  <Card title="Evaluation Recipe" icon="chart-line">
+    `wav2vec2.asr.eval.recipe`
+    
+    Test model performance on evaluation datasets.
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+<Steps>
+  <Step title="Set Output Directory">
+    Configure where training artifacts (checkpoints, logs) will be saved:
+    
+    ```bash
+    export OUTPUT_DIR="/path/to/artifact/directory"
+    ```
+  </Step>
+  
+  <Step title="Navigate to Repository">
+    ```bash
+    cd omnilingual_asr
+    ```
+  </Step>
+  
+  <Step title="Run Training Recipe">
+    ```bash
+    python -m workflows.recipes.wav2vec2.asr $OUTPUT_DIR \
+      --config-file workflows/recipes/wav2vec2/asr/configs/ctc-finetune.yaml
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  The recipe will automatically handle distributed training, checkpointing, validation, and metrics logging.
+</Tip>
+
+## Training Configurations
+
+Four main configuration files are provided for different training scenarios:
+
+<Tabs>
+  <Tab title="CTC from Encoder">
+    Train a CTC model starting from a pre-trained W2V encoder checkpoint.
+    
+    **Config:** `configs/ctc-from-encoder.yaml`
+    
+    ```yaml
+    model:
+      name: "omniASR_CTC_300M"
+    
+    dataset:
+      name: "example_dataset"
+      train_split: "train"
+      valid_split: "dev"
+      storage_mode: "MIXTURE_PARQUET"
+      task_mode: "ASR"
+      mixture_parquet_storage_config:
+        dataset_summary_path: "/path/to/dataset/language_distribution_0.tsv"
+        beta_corpus: 0.5
+        beta_language: 0.5
+        fragment_loading:
+          cache: True
+      asr_task_config:
+         min_audio_len: 32_000
+         max_audio_len: 960_000
+         max_num_elements: 960_000
+         batch_shuffle_window: 1
+         normalize_audio: true
+         example_shuffle_window: 1
+    
+    tokenizer:
+      name: "omniASR_tokenizer_v1"
+    
+    optimizer:
+      config:
+        lr: 5e-05
+    
+    trainer:
+      freeze_encoder_for_n_steps: 0
+      mixed_precision:
+        dtype: "torch.bfloat16"
+      grad_accumulation:
+        num_batches: 4
+    
+    regime:
+      num_steps: 20_000
+      validate_after_n_steps: 0
+      validate_every_n_steps: 1000
+      checkpoint_every_n_steps: 1000
+      publish_metrics_every_n_steps: 200
+    ```
+    
+    **Use Case:** Building a new CTC model with custom data
+  </Tab>
+  
+  <Tab title="CTC Fine-tuning">
+    Fine-tune an existing CTC checkpoint on new data.
+    
+    **Config:** `configs/ctc-finetune.yaml`
+    
+    ```yaml
+    model:
+      name: "omniASR_CTC_300M"
+    
+    dataset:
+      name: "example_dataset"
+      train_split: "train"
+      valid_split: "dev"
+      storage_mode: "MIXTURE_PARQUET"
+      task_mode: "ASR"
+      mixture_parquet_storage_config:
+        dataset_summary_path: "/path/to/your/dataset/language_distribution_0.tsv"
+        beta_corpus: 0.5
+        beta_language: 0.5
+        fragment_loading:
+          cache: True
+      asr_task_config:
+         min_audio_len: 32_000
+         max_audio_len: 960_000
+         max_num_elements: 960_000
+         batch_shuffle_window: 1
+         normalize_audio: true
+         example_shuffle_window: 1
+    
+    tokenizer:
+      name: "omniASR_tokenizer_v1"
+    
+    optimizer:
+      config:
+        lr: 5e-05
+    
+    trainer:
+      freeze_encoder_for_n_steps: 0
+      mixed_precision:
+        dtype: "torch.bfloat16"
+      grad_accumulation:
+        num_batches: 4
+    
+    regime:
+      num_steps: 20_000
+      validate_after_n_steps: 0
+      validate_every_n_steps: 1000
+      checkpoint_every_n_steps: 1000
+      publish_metrics_every_n_steps: 200
+    ```
+    
+    **Use Case:** Adapting pre-trained CTC models to specific domains/languages
+  </Tab>
+  
+  <Tab title="LLM from Encoder">
+    Train an LLM model starting from a W2V encoder checkpoint.
+    
+    **Config:** `configs/llm-from-encoder.yaml`
+    
+    ```yaml
+    model:
+      name: "omniASR_LLM_300M"
+    
+    dataset:
+      name: "example_dataset"
+      train_split: "train"
+      valid_split: "dev"
+      storage_mode: "MIXTURE_PARQUET"
+      task_mode: "ASR"
+      mixture_parquet_storage_config:
+        dataset_summary_path: "/path/to/dataset/language_distribution_0.tsv"
+        beta_corpus: 0.5
+        beta_language: 0.5
+      asr_task_config:
+         min_audio_len: 32_000
+         max_audio_len: 320_000
+         max_num_elements: 320_000
+         batch_shuffle_window: 1
+         normalize_audio: true
+         example_shuffle_window: 1
+    
+    tokenizer:
+      name: "omniASR_tokenizer_v1"
+    
+    optimizer:
+      config:
+        lr: 5e-05
+    
+    trainer:
+      data_parallelism: "fsdp"
+      fsdp:
+        granularity: "stack"
+        version: "v1"
+        fp32_reduce: false
+      freeze_encoder_for_n_steps: 0
+      mixed_precision:
+        dtype: "torch.bfloat16"
+      grad_accumulation:
+        num_batches: 4
+    
+    regime:
+      num_steps: 20_000
+      validate_after_n_steps: 0
+      validate_every_n_steps: 1
+      checkpoint_every_n_steps: 1000
+      publish_metrics_every_n_steps: 1
+    ```
+    
+    **Use Case:** Building a new LLM-based ASR model
+  </Tab>
+  
+  <Tab title="LLM Fine-tuning">
+    Fine-tune an existing LLM checkpoint.
+    
+    **Config:** `configs/llm-finetune.yaml`
+    
+    ```yaml
+    model:
+      name: "omniASR_LLM_1B"
+    
+    dataset:
+      name: "example_dataset"
+      train_split: "train"
+      valid_split: "dev"
+      storage_mode: "MIXTURE_PARQUET"
+      task_mode: "ASR"
+      mixture_parquet_storage_config:
+        dataset_summary_path: "/path/to/your/dataset/language_distribution_0.tsv"
+        beta_corpus: 0.5
+        beta_language: 0.5
+      asr_task_config:
+         min_audio_len: 32_000
+         max_audio_len: 320_000
+         max_num_elements: 320_000
+         batch_shuffle_window: 1
+         normalize_audio: true
+         example_shuffle_window: 1
+    
+    tokenizer:
+      name: "omniASR_tokenizer_v1"
+    
+    optimizer:
+      config:
+        lr: 5e-05
+    
+    trainer:
+      data_parallelism: "fsdp"
+      fsdp:
+        granularity: "stack"
+        version: "v1"
+        fp32_reduce: false
+      freeze_encoder_for_n_steps: 0
+      mixed_precision:
+        dtype: "torch.bfloat16"
+      grad_accumulation:
+        num_batches: 4
+    
+    regime:
+      num_steps: 20_000
+      validate_after_n_steps: 0
+      validate_every_n_steps: 1
+      checkpoint_every_n_steps: 1000
+      publish_metrics_every_n_steps: 1
+    ```
+    
+    **Use Case:** Adapting pre-trained LLM models to new languages/domains
+  </Tab>
+</Tabs>
+
+## Recommended Fine-tuning Settings
+
+For users with limited compute resources who want to fine-tune smaller CTC models on low-resource languages:
+
+<Note>
+  Based on Section 5.7.5 of the research paper, fine-tuning smaller CTC models produces models competitive with 7B LLM models on specific languages.
+</Note>
+
+### Optimal Configuration
+
+**Config:** `configs/ctc-finetune-recommendation.yaml`
+
+```yaml
+model:
+  name: "omniASR_CTC_300M"  # or omniASR_CTC_1B, omniASR_CTC_3B
+
+dataset:
+  name: "example_dataset"
+  train_split: "train"
+  valid_split: "dev"
+  storage_mode: "MIXTURE_PARQUET"
+  task_mode: "ASR"
+  mixture_parquet_storage_config:
+    dataset_summary_path: "/path/to/your/dataset/language_distribution_0.tsv"
+    beta_corpus: 0.5
+    beta_language: 0.5
+    fragment_loading:
+      cache: True
+  asr_task_config:
+     max_audio_len: 960_000       # 60s at 16kHz
+     max_num_elements: 7_680_000  # Max of 8x 60s samples or more at lower lengths
+     batch_shuffle_window: 1
+     normalize_audio: true
+     example_shuffle_window: 0    # Full-batch shuffling
+
+tokenizer:
+  name: "omniASR_tokenizer_v1"
+
+optimizer:
+  config:
+    lr: 1e-05  # Lower learning rate for fine-tuning
+
+trainer:
+  freeze_encoder_for_n_steps: 0
+  mixed_precision:
+    dtype: "torch.bfloat16"
+  grad_accumulation:
+    num_batches: 1  # Tune if getting OOM errors
+
+regime:
+  num_steps: 5_000  # Shorter training for fine-tuning
+  validate_every_n_steps: 500
+  validate_after_n_steps: 500
+  checkpoint_every_n_steps: 500
+  checkpoint_after_n_steps: 500
+  publish_metrics_every_n_steps: 500
+  publish_metrics_after_n_steps: 500
+```
+
+<AccordionGroup>
+  <Accordion title="Key Parameters Explained">
+    **Audio Length Settings:**
+    - `max_audio_len: 960_000` - Maximum 60 seconds at 16kHz
+    - `max_num_elements: 7_680_000` - Allows 8x 60s samples or more shorter samples
+    
+    **Optimization:**
+    - `lr: 1e-05` - Lower learning rate prevents catastrophic forgetting
+    - `grad_accumulation: 1` - Increase if running out of memory
+    
+    **Training Regime:**
+    - `num_steps: 5_000` - Sufficient for fine-tuning on specific languages
+    - More steps may be needed for larger datasets
+  </Accordion>
+  
+  <Accordion title="GPU Requirements">
+    **Reference configurations from paper:**
+    - 300M model: 32 GPUs
+    - 1B model: 64 GPUs
+    - 3B model: 96 GPUs
+    
+    **For smaller setups:**
+    - Increase `grad_accumulation.num_batches` to compensate for fewer GPUs
+    - Reduce `max_num_elements` to fit in available memory
+    - Use gradient checkpointing for memory savings
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  These hyperparameters served as a good starting point across languages, but optimal settings vary per language. Experiment with learning rate and number of steps.
+</Tip>
+
+## Configuration Parameters
+
+### Dataset Configuration
+
+<CodeGroup>
+```yaml Mixture Parquet
+dataset:
+  name: "example_dataset"
+  train_split: "train"
+  valid_split: "dev"
+  storage_mode: "MIXTURE_PARQUET"
+  task_mode: "ASR"
+  mixture_parquet_storage_config:
+    dataset_summary_path: "/path/to/language_distribution_0.tsv"
+    beta_corpus: 0.5      # Temperature for corpus sampling
+    beta_language: 0.5    # Temperature for language sampling
+    fragment_loading:
+      cache: True
+  asr_task_config:
+     min_audio_len: 32_000       # Min 2s at 16kHz
+     max_audio_len: 960_000      # Max 60s at 16kHz
+     max_num_elements: 960_000   # Batch size limit
+     batch_shuffle_window: 1
+     normalize_audio: true
+     example_shuffle_window: 1
+```
+
+```yaml Manifest Storage
+dataset:
+  name: "example_dataset"
+  storage_mode: "MANIFEST"
+  task_mode: "ASR"
+  # Alternative backend for custom data formats
+  # See ManifestStorage implementation for details
+```
+</CodeGroup>
+
+**Key Parameters:**
+
+<AccordionGroup>
+  <Accordion title="Sampling Configuration">
+    **Temperature Sampling:**
+    - `beta_corpus`: Controls corpus mixture distribution
+      - `0.5`: Balanced sampling
+      - Higher: More uniform across corpora
+      - Lower: Biased toward larger corpora
+    
+    - `beta_language`: Controls language mixture distribution
+      - `0.5`: Balanced across languages
+      - Higher: More uniform sampling
+      - Lower: Biased toward high-resource languages
+  </Accordion>
+  
+  <Accordion title="Audio Constraints">
+    - `min_audio_len`: Minimum audio length (in samples at 16kHz)
+      - Example: `32_000` = 2 seconds
+    
+    - `max_audio_len`: Maximum audio length
+      - Example: `960_000` = 60 seconds
+    
+    - `max_num_elements`: Maximum total samples in a batch
+      - Controls memory usage
+      - Can be multiple short samples or fewer long samples
+  </Accordion>
+  
+  <Accordion title="Shuffling">
+    - `batch_shuffle_window`: Number of batches to shuffle
+      - `1`: Minimal shuffling
+      - Higher: More randomization
+    
+    - `example_shuffle_window`: Number of examples to shuffle
+      - `0`: Full-batch shuffling
+      - `1`: Minimal shuffling
+      - Higher: Window-based shuffling
+  </Accordion>
+</AccordionGroup>
+
+### Trainer Configuration
+
+<CodeGroup>
+```yaml CTC Training
+trainer:
+  freeze_encoder_for_n_steps: 0
+  mixed_precision:
+    dtype: "torch.bfloat16"
+  grad_accumulation:
+    num_batches: 4
+```
+
+```yaml LLM Training (FSDP)
+trainer:
+  data_parallelism: "fsdp"  # Fully Sharded Data Parallel
+  fsdp:
+    granularity: "stack"
+    version: "v1"
+    fp32_reduce: false
+  freeze_encoder_for_n_steps: 0
+  mixed_precision:
+    dtype: "torch.bfloat16"
+  grad_accumulation:
+    num_batches: 4
+```
+</CodeGroup>
+
+**Parameters:**
+
+- **`freeze_encoder_for_n_steps`**: Freeze encoder during initial training steps
+  - Useful when training decoder from scratch
+  - `0`: No freezing
+
+- **`mixed_precision.dtype`**: Use mixed precision training
+  - `torch.bfloat16`: Better numerical stability than fp16
+  - Reduces memory and increases speed
+
+- **`grad_accumulation.num_batches`**: Accumulate gradients over N batches
+  - Effectively increases batch size without more memory
+  - Increase if running out of GPU memory
+
+- **`data_parallelism`** (LLM only): Distributed training strategy
+  - `fsdp`: Fully Sharded Data Parallel for large models
+  - Required for 1B+ parameter models
+
+### Optimizer Configuration
+
+```yaml
+optimizer:
+  config:
+    lr: 5e-05  # Learning rate
+    # Additional Adam parameters available
+```
+
+<Tip>
+  Start with `5e-05` for training from scratch and `1e-05` for fine-tuning.
+</Tip>
+
+### Regime Configuration
+
+```yaml
+regime:
+  num_steps: 20_000                     # Total training steps
+  validate_after_n_steps: 0             # When to start validation
+  validate_every_n_steps: 1000          # Validation frequency
+  checkpoint_every_n_steps: 1000        # Checkpoint frequency
+  checkpoint_after_n_steps: 0           # When to start checkpointing
+  publish_metrics_every_n_steps: 200    # Metrics logging frequency
+  publish_metrics_after_n_steps: 0      # When to start logging
+```
+
+## Dataset Backends
+
+The recipe system supports multiple storage and task backends:
+
+### Storage Backends
+
+<Tabs>
+  <Tab title="Mixture Parquet">
+    **Implementation:** `MixtureParquetStorage`
+    
+    Optimized for large-scale multilingual training with weighted sampling:
+    
+    ```python
+    from omnilingual_asr.datasets.storage.mixture_parquet_storage import MixtureParquetStorage
+    
+    storage = MixtureParquetStorage(
+        dataset_path="/path/to/parquet/dataset",
+        dataset_summary_path="/path/to/language_distribution_0.tsv",
+        beta_corpus=0.5,
+        beta_language=0.5
+    )
+    ```
+    
+    **Features:**
+    - Temperature-based sampling across corpora and languages
+    - Efficient streaming from partitioned parquet files
+    - Built-in statistics tracking
+    
+    See: [mixture_parquet_storage.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/datasets/storage/mixture_parquet_storage.py)
+  </Tab>
+  
+  <Tab title="Manifest Storage">
+    **Implementation:** `ManifestStorage`
+    
+    Flexible backend for custom data formats:
+    
+    ```python
+    from omnilingual_asr.datasets.storage.manifest_storage import ManifestStorage
+    
+    storage = ManifestStorage(
+        manifest_path="/path/to/manifest.json"
+    )
+    ```
+    
+    **Use Cases:**
+    - Custom dataset formats
+    - Legacy data pipelines
+    - Non-parquet workflows
+    
+    See: [manifest_storage.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/datasets/storage/manifest_storage.py)
+  </Tab>
+</Tabs>
+
+### Task Backends
+
+<Tabs>
+  <Tab title="ASR Task">
+    **Implementation:** `AsrTask`
+    
+    Returns `Seq2SeqBatch` with audio and text:
+    
+    ```python
+    # Output format
+    batch = Seq2SeqBatch(
+        source_seqs=audio_features,      # [batch, time, features]
+        source_seq_lens=audio_lengths,   # [batch]
+        target_seqs=text_tokens,         # [batch, seq_len]
+        target_seq_lens=text_lengths     # [batch]
+    )
+    ```
+    
+    See: [asr_task.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/datasets/tasks/asr_task.py)
+  </Tab>
+  
+  <Tab title="SSL Task">
+    **Implementation:** `SslTask`
+    
+    Returns `SequenceBatch` with audio only (for self-supervised learning):
+    
+    ```python
+    # Output format
+    batch = SequenceBatch(
+        seqs=audio_features,        # [batch, time, features]
+        seq_lens=audio_lengths,     # [batch]
+    )
+    ```
+    
+    See: [ssl_task.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/datasets/tasks/ssl_task.py)
+  </Tab>
+</Tabs>
+
+## Recipe Structure
+
+```
+workflows/recipes/wav2vec2/asr/
+├── eval/
+│   ├── configs/              # Evaluation recipe configs
+│   ├── default_config.py
+│   └── recipe.py             # Evaluation logic
+├── configs/                  # Training recipe configs
+│   ├── ctc-from-encoder.yaml
+│   ├── ctc-finetune.yaml
+│   ├── ctc-finetune-recommendation.yaml
+│   ├── llm-from-encoder.yaml
+│   └── llm-finetune.yaml
+├── criterion.py              # Loss computation
+├── dataset_selector.py       # Backend switching logic
+├── default_config.py         # Default parameters
+├── recipe.py                 # Main training logic
+└── wer_calculator.py         # WER metric computation
+```
+
+## Running Evaluation
+
+Test model performance using the evaluation recipe:
+
+```bash
+python -m workflows.recipes.wav2vec2.asr.eval $OUTPUT_DIR \
+  --config-file workflows/recipes/wav2vec2/asr/eval/configs/eval.yaml
+```
+
+The evaluation recipe reuses dataset configurations from training recipes and generates:
+- Hypothesis transcriptions
+- WER/CER metrics
+- Per-language performance statistics
+
+## Custom Dataset Integration
+
+To use your own dataset with the training recipes:
+
+<Steps>
+  <Step title="Prepare Dataset">
+    Convert your data to parquet format following the [Data Preparation Guide](/guides/data-preparation):
+    
+    ```bash
+    python -m workflows.dataprep.hf_dataset_ingestion_example run_full /path/to/output
+    ```
+  </Step>
+  
+  <Step title="Create Asset Card">
+    Define a dataset asset card at `src/omnilingual_asr/cards/datasets/my_dataset.yaml`:
+    
+    ```yaml
+    name: my_dataset
+    dataset_family: mixture_parquet_asr_dataset
+    dataset_config:
+      data: /path/to/the/dataset
+    tokenizer_ref: omniASR_tokenizer_v1
+    ```
+  </Step>
+  
+  <Step title="Reference in Config">
+    Update your recipe YAML to reference the new dataset:
+    
+    ```yaml
+    dataset:
+      name: "my_dataset"  # Matches asset card name
+      train_split: "train"
+      valid_split: "dev"
+      # ... rest of config
+    ```
+  </Step>
+  
+  <Step title="Run Training">
+    ```bash
+    python -m workflows.recipes.wav2vec2.asr $OUTPUT_DIR \
+      --config-file your_custom_config.yaml
+    ```
+  </Step>
+</Steps>
+
+## Monitoring Training
+
+Training metrics are logged at intervals specified in the regime configuration:
+
+<CodeGroup>
+```bash TensorBoard
+# View metrics in TensorBoard
+tensorboard --logdir=$OUTPUT_DIR/tensorboard
+```
+
+```python Metrics Available
+# Training metrics
+- loss/train
+- learning_rate
+- gradient_norm
+- throughput (samples/sec)
+
+# Validation metrics
+- loss/valid
+- wer/cer (if enabled)
+- per-language performance
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Start Small, Scale Up">
+    1. Test with 300M model first
+    2. Verify data pipeline works correctly
+    3. Scale to larger models once validated
+    4. Use gradient accumulation to simulate larger batch sizes
+  </Accordion>
+  
+  <Accordion title="Fine-tuning Strategy">
+    1. Use lower learning rate (1e-05 vs 5e-05)
+    2. Shorter training (5K vs 20K steps)
+    3. Monitor validation loss for overfitting
+    4. Consider freezing encoder initially
+  </Accordion>
+  
+  <Accordion title="Memory Management">
+    1. Start with small `max_num_elements`
+    2. Increase `grad_accumulation` if OOM
+    3. Use mixed precision (bfloat16)
+    4. Enable gradient checkpointing for large models
+  </Accordion>
+  
+  <Accordion title="Distributed Training">
+    1. Use FSDP for models > 1B parameters
+    2. Adjust GPU count based on model size
+    3. Scale learning rate with batch size
+    4. Monitor communication overhead
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Out of Memory (OOM)">
+    **Solutions:**
+    - Reduce `max_num_elements`
+    - Increase `grad_accumulation.num_batches`
+    - Reduce `max_audio_len`
+    - Enable gradient checkpointing
+    - Use smaller model variant
+  </Accordion>
+  
+  <Accordion title="Training Diverges">
+    **Solutions:**
+    - Lower learning rate
+    - Increase warmup steps
+    - Check data quality and normalization
+    - Reduce batch size
+    - Verify gradient clipping is enabled
+  </Accordion>
+  
+  <Accordion title="Slow Training">
+    **Solutions:**
+    - Increase `batch_size` or `max_num_elements`
+    - Reduce validation frequency
+    - Enable data caching (`fragment_loading.cache: True`)
+    - Use faster storage (local SSD vs network)
+    - Profile data loading bottlenecks
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Preparation" icon="database" href="/guides/data-preparation">
+    Learn how to prepare datasets for training
+  </Card>
+  
+  <Card title="Inference Guide" icon="play" href="/guides/inference">
+    Use your trained models for transcription
+  </Card>
+  
+  <Card title="Model Architectures" icon="network-wired" href="/guides/model-architectures">
+    Understand the model internals
+  </Card>
+  
+  <Card title="GitHub Examples" icon="github" href="https://github.com/facebookresearch/omnilingual-asr/tree/main/workflows/recipes">
+    Explore more training examples
+  </Card>
+</CardGroup>

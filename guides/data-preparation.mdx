@@ -1,0 +1,769 @@
+---
+title: Data Preparation
+description: Prepare multilingual speech datasets for training and evaluation
+icon: database
+---
+
+Comprehensive guide to converting, formatting, and optimizing audio datasets for efficient multilingual ASR training.
+
+## Overview
+
+The data preparation pipeline converts popular HuggingFace audio datasets into a standardized parquet format optimized for massively multilingual speech model training.
+
+<Note>
+  Parquet datasets support efficient streaming, weighted sampling, and partitioning by corpus, split, and language.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Install Core Dependencies">
+    ```bash
+    # Using pip
+    pip install omnilingual-asr[data]
+    
+    # Or using uv
+    uv add "omnilingual-asr[data]"
+    ```
+    
+    This installs: `pyarrow`, `polars`, `pandas`
+  </Step>
+  
+  <Step title="Install HuggingFace Dependencies">
+    For data preparation with HuggingFace datasets:
+    
+    ```bash
+    pip install ray datasets
+    ```
+    
+    - `ray`: Distributed processing framework
+    - `datasets`: HuggingFace datasets library
+  </Step>
+</Steps>
+
+## Parquet Dataset Format
+
+### Directory Structure
+
+Datasets are organized by `corpus`, `split`, and `language`:
+
+```
+dataset_root_dir/version=0/
+├── corpus=mls/
+│   ├── split=train/
+│   │   ├── language=deu_Latn/
+│   │   │   └── part-*.parquet
+│   │   └── language=fra_Latn/
+│   │       └── part-*.parquet
+│   └── split=dev/
+│       └── ...
+└── corpus=fleurs/
+    └── ...
+```
+
+**Benefits:**
+
+<CardGroup cols={3}>
+  <Card title="Filtered Loading" icon="filter">
+    Load only `split=train` for training
+  </Card>
+  
+  <Card title="Weighted Sampling" icon="balance-scale">
+    Sample across corpus-language combinations
+  </Card>
+  
+  <Card title="Language-Specific Eval" icon="language">
+    Evaluate on specific languages
+  </Card>
+</CardGroup>
+
+### Schema
+
+Each parquet file follows a minimal, optimized schema:
+
+```python
+text: string
+
+audio_bytes: list<element: int8>
+  child 0, element: int8
+
+audio_size: int64
+
+corpus: dictionary<values=string, indices=int32, ordered=0>
+
+split: dictionary<values=string, indices=int32, ordered=0>
+
+language: dictionary<values=string, indices=int32, ordered=0>
+```
+
+<Tabs>
+  <Tab title="text">
+    **Type:** `string`
+    
+    Contains the normalized text transcription of the audio sample.
+    
+    **Normalization includes:**
+    - Lowercasing (configurable)
+    - Punctuation removal
+    - Number word removal
+    - Language-specific processing
+  </Tab>
+  
+  <Tab title="audio_bytes">
+    **Type:** `list<int8>`
+    
+    Contains compressed (FLAC/OGG) binary audio data as a list of bytes.
+    
+    **Format:**
+    - All audio converted to 16kHz mono-channel
+    - Uses `pa.list_(pa.int8())` instead of `pa.binary()`
+    - No additional copying when converting to pandas
+    
+    <Tip>
+      Use `binary_to_list_int8()` from `audio_tools.py` for fast conversion.
+    </Tip>
+  </Tab>
+  
+  <Tab title="audio_size">
+    **Type:** `int64`
+    
+    Size of the decoded audio waveform in samples.
+    
+    **Uses:**
+    - Filter samples that are too short/long
+    - Create length-matched batches
+    - Compute duration: `audio_size / 16_000` seconds
+    - Temperature sampling statistics
+  </Tab>
+  
+  <Tab title="corpus">
+    **Type:** `dictionary<string>`
+    
+    Corpus name where data originates (e.g., "fleurs", "mls").
+    
+    **Uses:**
+    - Partition filtering
+    - Weighted corpus sampling
+    - Dataset mixture tracking
+  </Tab>
+  
+  <Tab title="split">
+    **Type:** `dictionary<string>`
+    
+    Dataset split: "train", "dev", or "test".
+    
+    **Uses:**
+    - Load training vs validation data
+    - Partition filtering during data loading
+  </Tab>
+  
+  <Tab title="language">
+    **Type:** `dictionary<string>`
+    
+    Standardized language code (e.g., "deu_Latn" for German).
+    
+    **Format:** [ISO 639-3 language code]_[Script]
+    
+    See: [lang_ids.py](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py)
+  </Tab>
+</Tabs>
+
+<Note>
+  Parquet files are written with `row_group_size=100` to reduce memory footprint during streaming and enable efficient shuffling.
+</Note>
+
+## Data Processing Pipeline
+
+### Supported Datasets
+
+The example pipeline demonstrates preparation using:
+
+<Tabs>
+  <Tab title="FLEURS">
+    **Few-shot Learning Evaluation of Universal Representations of Speech**
+    
+    - **Paper:** [FLEURS (2022)](https://arxiv.org/abs/2205.12446)
+    - **HuggingFace:** [google/fleurs](https://huggingface.co/datasets/google/fleurs)
+    - **Languages:** 102 languages
+    - **Use Case:** Evaluation benchmark
+  </Tab>
+  
+  <Tab title="MLS">
+    **Multilingual LibriSpeech**
+    
+    - **Paper:** [MLS (2020)](https://arxiv.org/abs/2012.03411)
+    - **HuggingFace:** [facebook/multilingual_librispeech](https://huggingface.co/datasets/facebook/multilingual_librispeech)
+    - **Languages:** 8 European languages
+    - **Use Case:** Large-scale training
+  </Tab>
+</Tabs>
+
+### Processing Steps
+
+The pipeline uses Ray for distributed processing with configurable shuffling:
+
+<Steps>
+  <Step title="Load from HuggingFace">
+    ```python
+    from datasets import load_dataset
+    
+    dataset = load_dataset(
+        "google/fleurs",
+        "en_us",
+        split="train",
+        streaming=True
+    )
+    ```
+  </Step>
+  
+  <Step title="Text Processing">
+    **Operations:**
+    - Language-specific normalization
+    - Punctuation removal
+    - Lowercase conversion
+    - Digit-only word removal
+    - Language code remapping
+    
+    ```python
+    from workflows.dataprep.text_tools import text_normalize
+    
+    normalized = text_normalize(
+        text,
+        iso_code="en",
+        lower_case=True,
+        remove_numbers=True
+    )
+    ```
+  </Step>
+  
+  <Step title="Audio Processing">
+    **Operations:**
+    - Binary conversion to byte lists
+    - Validation and resampling to 16kHz
+    - Audio size computation
+    - Format standardization
+    
+    ```python
+    from workflows.dataprep.audio_tools import AudioTableProcessor
+    
+    processor = AudioTableProcessor()
+    processed_batch = processor(audio_batch)
+    ```
+  </Step>
+  
+  <Step title="Write Parquet">
+    **Configuration:**
+    - Partition by corpus/split/language
+    - Row group size: 100
+    - Shuffle window: 1k-10k samples
+    
+    ```python
+    df.write_parquet(
+        path,
+        partition_by=["corpus", "split", "language"],
+        row_group_size=100
+    )
+    ```
+  </Step>
+</Steps>
+
+## Quick Start Example
+
+Use the provided ingestion script for automatic dataset generation:
+
+<CodeGroup>
+```bash Quick Test (5-10 minutes)
+# Process 2 languages (en_us, fr_fr) from FLEURS
+python workflows/dataprep/hf_dataset_ingestion_example.py \
+  run_short /path/to/output/dir
+```
+
+```bash Full Example (~90 minutes)
+# Process MLS (7 languages) + FLEURS (5 languages)
+python workflows/dataprep/hf_dataset_ingestion_example.py \
+  run_full /path/to/output/dir
+```
+
+```bash With Versioning
+# Add custom name and version
+python workflows/dataprep/hf_dataset_ingestion_example.py \
+  run_short /path/to/output/dir \
+  --name my_asr_data \
+  --version 1
+```
+</CodeGroup>
+
+### Individual Dataset Processing
+
+<Tabs>
+  <Tab title="Process MLS Only">
+    ```bash
+    python workflows/dataprep/hf_dataset_ingestion_example.py \
+      ingest_mls /path/to/output/dir
+    ```
+  </Tab>
+  
+  <Tab title="Process FLEURS Only">
+    ```bash
+    python workflows/dataprep/hf_dataset_ingestion_example.py \
+      ingest_fleurs /path/to/output/dir
+    ```
+  </Tab>
+  
+  <Tab title="Compute Statistics">
+    ```bash
+    python workflows/dataprep/hf_dataset_ingestion_example.py \
+      compute_stats \
+      /path/to/parquet/dataset \
+      /path/to/output/stats.tsv
+    ```
+  </Tab>
+</Tabs>
+
+## Processing Utilities
+
+### Text Processing
+
+**File:** `workflows/dataprep/text_tools.py`
+
+<Accordion title="text_normalize()">
+```python
+from workflows.dataprep.text_tools import text_normalize
+
+normalized_text = text_normalize(
+    text="Hello, World! 123",
+    iso_code="en",           # 2-letter ISO code
+    lower_case=True,         # Convert to lowercase
+    remove_numbers=True,     # Remove digit-only words
+    remove_brackets=False    # Keep bracketed content
+)
+# Output: "hello world"
+```
+
+**Parameters:**
+- `text`: Input text to normalize
+- `iso_code`: 2-letter ISO language code (e.g., "en", "de", "fr")
+- `lower_case`: Apply lowercasing (default: True)
+- `remove_numbers`: Remove words containing only digits (default: True)
+- `remove_brackets`: Remove bracketed content (default: False)
+
+**Features:**
+- Language-specific punctuation handling
+- Unicode normalization
+- Whitespace normalization
+</Accordion>
+
+### Audio Processing
+
+**File:** `workflows/dataprep/audio_tools.py`
+
+<AccordionGroup>
+  <Accordion title="AudioTableProcessor">
+    Main class for processing audio data in PyArrow tables:
+    
+    ```python
+    from workflows.dataprep.audio_tools import AudioTableProcessor
+    
+    processor = AudioTableProcessor(
+        target_sample_rate=16000,
+        audio_format="flac"
+    )
+    
+    # Process PyArrow table batch
+    processed_table = processor(audio_table)
+    ```
+    
+    **Features:**
+    - Automatic resampling to target rate
+    - Format conversion (WAV/FLAC/OGG)
+    - Mono-channel conversion
+    - Binary encoding to int8 lists
+  </Accordion>
+  
+  <Accordion title="map_to_target_schema()">
+    Transform batches to target parquet schema:
+    
+    ```python
+    from workflows.dataprep.audio_tools import map_to_target_schema
+    
+    schema_batch = map_to_target_schema(
+        batch=processed_batch,
+        split="train",
+        corpus="fleurs"
+    )
+    ```
+    
+    Adds `corpus`, `split` columns and ensures schema compliance.
+  </Accordion>
+  
+  <Accordion title="binary_to_list_int8()">
+    Efficiently convert PyArrow BinaryArray to ListArray of int8:
+    
+    ```python
+    from workflows.dataprep.audio_tools import binary_to_list_int8
+    
+    # Convert audio bytes
+    list_array = binary_to_list_int8(binary_array)
+    ```
+    
+    **Performance:** Zero-copy conversion for fast processing.
+  </Accordion>
+  
+  <Accordion title="bytes_to_tensor()">
+    Convert numpy array of audio bytes to waveform tensor:
+    
+    ```python
+    from workflows.dataprep.audio_tools import bytes_to_tensor
+    
+    waveform = bytes_to_tensor(
+        audio_arr=audio_bytes,
+        target_sample_rate=16_000
+    )
+    ```
+    
+    **Output:** Tensor with shape `[num_samples]`
+  </Accordion>
+</AccordionGroup>
+
+## Example: Custom Dataset Preparation
+
+### From HuggingFace Dataset
+
+```python
+import ray
+from datasets import load_dataset
+from workflows.dataprep.audio_tools import AudioTableProcessor, map_to_target_schema
+from workflows.dataprep.text_tools import text_normalize
+
+# Initialize Ray
+ray.init()
+
+# Load dataset
+ds = load_dataset(
+    "mozilla-foundation/common_voice_11_0",
+    "en",
+    split="train"
+)
+
+# Convert to Ray dataset
+ray_ds = ray.data.from_huggingface(ds)
+
+# Define processing pipeline
+def process_batch(batch):
+    # Text normalization
+    batch["text"] = [
+        text_normalize(text, iso_code="en")
+        for text in batch["sentence"]
+    ]
+    
+    # Audio processing
+    audio_processor = AudioTableProcessor()
+    batch = audio_processor(batch)
+    
+    # Map to target schema
+    batch = map_to_target_schema(
+        batch,
+        split="train",
+        corpus="common_voice"
+    )
+    
+    # Add language column
+    batch["language"] = ["eng_Latn"] * len(batch)
+    
+    return batch
+
+# Process and write
+ray_ds.map_batches(process_batch).write_parquet(
+    "/path/to/output/version=0",
+    partition_cols=["corpus", "split", "language"],
+    row_group_size=100
+)
+```
+
+### From Local Audio Files
+
+```python
+import pandas as pd
+import pyarrow as pa
+from pathlib import Path
+from workflows.dataprep.audio_tools import AudioTableProcessor
+from workflows.dataprep.text_tools import text_normalize
+
+# Prepare data
+audio_files = list(Path("/path/to/audio").glob("*.wav"))
+transcripts = [...]  # Load corresponding transcripts
+
+# Create DataFrame
+df = pd.DataFrame({
+    "audio_path": audio_files,
+    "transcript": transcripts
+})
+
+# Process
+processor = AudioTableProcessor()
+
+def process_row(row):
+    # Read audio
+    with open(row["audio_path"], "rb") as f:
+        audio_bytes = list(f.read())
+    
+    # Normalize text
+    text = text_normalize(row["transcript"], iso_code="en")
+    
+    return {
+        "audio_bytes": audio_bytes,
+        "audio_size": len(audio_bytes) * 16000,  # Approximate
+        "text": text,
+        "corpus": "my_corpus",
+        "split": "train",
+        "language": "eng_Latn"
+    }
+
+processed_df = df.apply(process_row, axis=1)
+
+# Write parquet
+table = pa.Table.from_pandas(processed_df)
+pa.parquet.write_to_dataset(
+    table,
+    root_path="/path/to/output/version=0",
+    partition_cols=["corpus", "split", "language"],
+    row_group_size=100
+)
+```
+
+## Dataset Loading for Training
+
+### Using MixtureParquetAsrDataset
+
+After preparing the dataset, load it for training:
+
+```python
+from omnilingual_asr.datasets.impl.mixture_parquet_asr_dataset import MixtureParquetAsrDataset
+from fairseq2.models.tokenizers.hub import load_tokenizer
+
+# Create dataset
+dataset = MixtureParquetAsrDataset.from_path(
+    path="/path/to/dataset/version=0",
+    name="my_asr_dataset"
+)
+
+# Load tokenizer
+tokenizer = load_tokenizer("omniASR_tokenizer_v1")
+
+# Create reader
+reader = dataset.create_reader(
+    split="train",
+    tokenizer=tokenizer,
+    gangs=gangs,
+    dtype=torch.float32,
+    storage_config=storage_config,
+    task_config=task_config,
+)
+
+# Iterate through batches
+for batches in reader:
+    for batch in batches:
+        # batch.source_seqs: audio features [batch, time, features]
+        # batch.target_seqs: text tokens [batch, seq_len]
+        # batch.source_seq_lens: audio sequence lengths
+        # batch.target_seq_lens: text sequence lengths
+        train_step(batch)
+```
+
+### Dataloader Features
+
+<CardGroup cols={2}>
+  <Card title="Weighted Sampling" icon="balance-scale">
+    Sample across languages/corpora with temperature control
+  </Card>
+  
+  <Card title="Streaming" icon="stream">
+    Efficient streaming with configurable buffering
+  </Card>
+  
+  <Card title="Audio Processing" icon="waveform">
+    Automatic decoding, normalization, feature extraction
+  </Card>
+  
+  <Card title="Dynamic Batching" icon="layer-group">
+    Length-based batching for efficient GPU utilization
+  </Card>
+  
+  <Card title="Text Tokenization" icon="font">
+    Automatic tokenization with filtering
+  </Card>
+  
+  <Card title="SpecAugment" icon="sliders">
+    Built-in spectrum augmentation
+  </Card>
+</CardGroup>
+
+## Verification
+
+### CLI Verification Tool
+
+Verify dataset creation and data loading:
+
+```bash
+python -m workflows.dataprep.dataloader_example \
+  --dataset_path="root_ds/all_asr/version=0" \
+  --split="train" \
+  --num_iterations=10
+```
+
+**This will:**
+1. Load the tokenizer
+2. Create the dataset (scan files, organize by corpus/language)
+3. Create a data reader with task/storage configs
+4. Iterate through batches and show statistics
+
+### Programmatic Verification
+
+```python
+import pyarrow.parquet as pq
+
+# Load dataset
+ds = pq.ParquetDataset("/path/to/dataset/version=0")
+
+# Check partitions
+print("Partitions:", ds.partitions)
+print("Files:", len(ds.files))
+
+# Read sample
+table = ds.read()
+print("Schema:", table.schema)
+print("Num rows:", len(table))
+print("Sample:", table.to_pandas().head())
+
+# Verify statistics
+stats = pd.read_csv("/path/to/language_distribution_0.tsv", sep="\t")
+print("\nLanguage distribution:")
+print(stats)
+```
+
+## Integration with Training
+
+To use your prepared dataset in training recipes:
+
+<Steps>
+  <Step title="Create Asset Card">
+    Define dataset at `src/omnilingual_asr/cards/datasets/my_dataset.yaml`:
+    
+    ```yaml
+    name: my_dataset
+    dataset_family: mixture_parquet_asr_dataset
+    dataset_config:
+      data: /path/to/the/dataset/version=0
+    tokenizer_ref: omniASR_tokenizer_v1
+    ```
+  </Step>
+  
+  <Step title="Reference in Recipe Config">
+    Update your training YAML:
+    
+    ```yaml
+    dataset:
+      name: "my_dataset"  # Matches asset card
+      train_split: "train"
+      valid_split: "dev"
+      storage_mode: "MIXTURE_PARQUET"
+      task_mode: "ASR"
+      mixture_parquet_storage_config:
+        dataset_summary_path: "/path/to/dataset/language_distribution_0.tsv"
+        beta_corpus: 0.5
+        beta_language: 0.5
+    ```
+  </Step>
+  
+  <Step title="Run Training">
+    ```bash
+    export OUTPUT_DIR="/path/to/output"
+    python -m workflows.recipes.wav2vec2.asr $OUTPUT_DIR \
+      --config-file your_config.yaml
+    ```
+  </Step>
+</Steps>
+
+## Performance Optimization
+
+<AccordionGroup>
+  <Accordion title="Shuffle Window Size">
+    **Recommendation:** 1k-10k samples
+    
+    - Too small: Poor randomization
+    - Too large: High memory usage
+    - Files consumed in row groups of 100
+  </Accordion>
+  
+  <Accordion title="Row Group Size">
+    **Default:** 100 rows per group
+    
+    **Benefits:**
+    - Lower memory during streaming
+    - Efficient shuffling
+    - Faster partition filtering
+  </Accordion>
+  
+  <Accordion title="Partition Strategy">
+    **Always partition by:** `corpus`, `split`, `language`
+    
+    **Enables:**
+    - Fast train/dev/test splitting
+    - Language-specific loading
+    - Weighted corpus sampling
+  </Accordion>
+  
+  <Accordion title="Distributed Processing">
+    Use Ray for large datasets:
+    
+    ```python
+    ray.init(num_cpus=16)  # Adjust based on hardware
+    
+    ray_ds.map_batches(
+        process_fn,
+        batch_size=100,
+        num_cpus=2  # CPUs per task
+    ).write_parquet(...)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Citations
+
+If using this pipeline or supported datasets, please cite:
+
+```bibtex
+@article{conneau2022fleurs,
+  title={FLEURS: Few-shot Learning Evaluation of Universal Representations of Speech},
+  author={Conneau, Alexis and Ma, Min and Khanuja, Simran and Zhang, Yu and Axelrod, Vera and Dalmia, Siddharth and Riesa, Jason and Rivera, Clara and Bapna, Ankur},
+  journal={arXiv preprint arXiv:2205.12446},
+  year={2022}
+}
+
+@article{pratap2020mls,
+  title={MLS: A Large-Scale Multilingual Dataset for Speech Research},
+  author={Pratap, Vineel and Xu, Qiantong and Sriram, Anuroop and Synnaeve, Gabriel and Collobert, Ronan},
+  journal={arXiv preprint arXiv:2012.03411},
+  year={2020}
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Training Guide" icon="graduation-cap" href="/guides/training">
+    Use your prepared dataset for model training
+  </Card>
+  
+  <Card title="Inference Guide" icon="play" href="/guides/inference">
+    Test your data with pre-trained models
+  </Card>
+  
+  <Card title="GitHub Examples" icon="github" href="https://github.com/facebookresearch/omnilingual-asr/tree/main/workflows/dataprep">
+    Explore more data preparation examples
+  </Card>
+  
+  <Card title="HuggingFace Datasets" icon="database" href="https://huggingface.co/datasets/facebook/omnilingual-asr-corpus">
+    Browse available ASR datasets
+  </Card>
+</CardGroup>
