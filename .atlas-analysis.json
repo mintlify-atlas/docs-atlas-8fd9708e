@@ -1,0 +1,108 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "Omnilingual ASR",
+  "projectDescription": "Open-source multilingual speech recognition system supporting over 1,600 languages with zero-shot learning capabilities",
+  "theme": "palm",
+  "primaryColor": "#0066FF",
+  "lightColor": "#E6F0FF",
+  "darkColor": "#0052CC",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation",
+              "supported-languages"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/inference",
+              "guides/model-architectures",
+              "guides/training",
+              "guides/data-preparation"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "models/ctc-models",
+              "models/llm-models",
+              "models/zero-shot",
+              "models/model-specifications"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/asset-management",
+              "advanced/batch-processing",
+              "advanced/language-conditioning",
+              "advanced/custom-datasets"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/inference-pipeline",
+              "api/context-examples",
+              "api/audio-input"
+            ]
+          },
+          {
+            "group": "Datasets",
+            "pages": [
+              "api/mixture-parquet-dataset",
+              "api/data-readers"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/wav2vec2-llama",
+              "api/model-configs"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Support for 1600+ languages including hundreds never covered by ASR technology",
+    "Multiple model families: W2V SSL, CTC ASR, and LLM-based ASR with 300M to 7B parameters",
+    "Zero-shot learning with in-context examples for unseen languages",
+    "Language conditioning for improved transcription accuracy",
+    "Unlimited audio length support with segmented processing",
+    "Comprehensive training and evaluation recipes with fairseq2",
+    "Parquet-based data pipeline for massive multilingual datasets",
+    "HuggingFace dataset integration with facebook/omnilingual-asr-corpus"
+  ],
+  "publicApiSurface": [
+    "ASRInferencePipeline",
+    "ASRInferencePipeline.transcribe()",
+    "ASRInferencePipeline.transcribe_with_context()",
+    "ContextExample",
+    "MixtureParquetAsrDataset",
+    "Wav2Vec2LlamaModel",
+    "Wav2Vec2LlamaConfig",
+    "omniASR_CTC_{300M,1B,3B,7B}_v2",
+    "omniASR_LLM_{300M,1B,3B,7B}_v2",
+    "omniASR_LLM_Unlimited_{300M,1B,3B,7B}_v2",
+    "omniASR_LLM_7B_ZS",
+    "omniASR_W2V_{300M,1B,3B,7B}",
+    "supported_langs",
+    "text_normalize()",
+    "AudioTableProcessor"
+  ]
+}
